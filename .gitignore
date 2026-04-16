@@ -1,0 +1,33 @@
+# Virtual Environment
+venv/
+env/
+.env
+.venv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Dataset (gambar besar)
+data/raw/*.jpg
+data/raw/*.jpeg
+data/raw/*.png
+data/processed/
+
+# Upload folder
+images/uploads/*
+!images/uploads/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
