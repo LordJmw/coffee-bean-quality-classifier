@@ -1,13 +1,11 @@
- 
 # utils/preprocessing.py
 import cv2
 import numpy as np
 
 def load_and_convert(image_array):
     """
-    M1: Konversi input ke format yang sesuai
+    Konversi input ke format RGB yang sesuai
     """
-    # Pastikan dalam format RGB
     if len(image_array.shape) == 2:
         # Grayscale → RGB
         img_rgb = cv2.cvtColor(image_array, cv2.COLOR_GRAY2RGB)
@@ -15,24 +13,23 @@ def load_and_convert(image_array):
         # RGBA → RGB
         img_rgb = cv2.cvtColor(image_array, cv2.COLOR_RGBA2RGB)
     else:
-        # BGR → RGB (jika dari OpenCV)
+        # Sudah RGB (dari PIL) atau BGR (dari OpenCV)
         img_rgb = image_array.copy()
     
     return img_rgb
 
-def downsample_image(image_array, target_size=(512, 512)):
+def downsample_image(image_array, target_size=(224, 224)):
     """
-    M1: Downsampling untuk efisiensi komputasi
+    M1: Downsampling/Resize ke ukuran seragam 224x224
+    - Untuk 256x256 (Normal): downscale sedikit → tetap tajam
+    - Untuk 500x500 (Cacat): downscale ~2.2x → efisien
     """
     h, w = image_array.shape[:2]
     
-    # Hanya downsample jika ukuran > target
-    if h > target_size[0] or w > target_size[1]:
-        img_down = cv2.resize(image_array, target_size, interpolation=cv2.INTER_AREA)
-    else:
-        img_down = image_array.copy()
+    # Resize ke target_size untuk konsistensi
+    img_resized = cv2.resize(image_array, target_size, interpolation=cv2.INTER_AREA)
     
-    return img_down
+    return img_resized
 
 def rgb_to_grayscale(image_array):
     """
@@ -67,15 +64,27 @@ def apply_threshold(gray_image, method='otsu'):
     
     return binary
 
-def preprocess_pipeline(image_array, blur_kernel=(5, 5), threshold_method='otsu'):
+def preprocess_pipeline(image_array, target_size=(224, 224), blur_kernel=(5, 5), threshold_method='otsu'):
     """
     Menjalankan seluruh preprocessing (M1, M3, persiapan M4)
+    
+    Parameters:
+    - image_array: Input gambar (numpy array)
+    - target_size: Ukuran output resize (default: 224x224)
+    - blur_kernel: Kernel size untuk Gaussian Blur
+    - threshold_method: Metode thresholding ('otsu' atau 'binary')
+    
+    Returns:
+    - Dictionary berisi hasil setiap tahapan
     """
     # M1: Load & Convert
     img_rgb = load_and_convert(image_array)
     
-    # M1: Downsampling
-    img_down = downsample_image(img_rgb)
+    # Simpan dimensi asli untuk info
+    original_size = img_rgb.shape[:2]
+    
+    # M1: Downsampling/Resize
+    img_down = downsample_image(img_rgb, target_size)
     
     # M1: RGB → Grayscale
     img_gray = rgb_to_grayscale(img_down)
@@ -90,7 +99,9 @@ def preprocess_pipeline(image_array, blur_kernel=(5, 5), threshold_method='otsu'
         'rgb': img_down,
         'gray': img_gray,
         'blur': img_blur,
-        'binary': img_binary
+        'binary': img_binary,
+        'original_size': original_size,
+        'processed_size': target_size
     }
     
     return results
