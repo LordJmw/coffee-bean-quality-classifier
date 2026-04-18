@@ -59,6 +59,20 @@ with st.sidebar:
     else:
         target_size = (512, 512)
     
+    interpolation_option = st.selectbox(
+        "Metode Interpolasi",
+        [
+            "Nearest Neighbor", 
+            "Bilinear interpolation", 
+            "Bicubic interpolation", 
+            "Area-based", 
+            "Lanczos", 
+            "Exact Bilinear interpolation", 
+            "Exact Nearest Neighbor"
+        ],
+        index=3 # Default: Area-based
+    )
+
     blur_kernel = st.slider("Gaussian Blur Kernel", 3, 11, 5, step=2)
     open_kernel = st.slider("Opening Kernel", 2, 7, 3)
     close_kernel = st.slider("Closing Kernel", 3, 9, 5)
@@ -169,9 +183,9 @@ with col2:
         # Tampilkan info resize
         if original_w != target_size[0] or original_h != target_size[1]:
             if original_w > target_size[0]:
-                st.caption(f"⬇️ Downscale: {original_w}x{original_h} → {target_size[0]}x{target_size[1]}")
+                st.caption(f"⬇️ Downscale: {original_w}x{original_h} → {target_size[0]}x{target_size[1]} (Rekomendasi: Area-Based Interpolation)")
             else:
-                st.caption(f"⬆️ Upscale: {original_w}x{original_h} → {target_size[0]}x{target_size[1]}")
+                st.caption(f"⬆️ Upscale: {original_w}x{original_h} → {target_size[0]}x{target_size[1]} (Rekomendasi: Bicubic Interpolation)")
 
         # Tampilkan expected grade jika dari dataset
         if input_mode == "📦 Gunakan Dataset Sample" and 'expected_grade' in st.session_state:
@@ -190,7 +204,8 @@ with col2:
                 preprocess_results = preprocess_pipeline(
                     img, 
                     target_size=target_size,
-                    blur_kernel=(blur_kernel, blur_kernel)
+                    blur_kernel=(blur_kernel, blur_kernel),
+                    interpolation_method=interpolation_option
                 )
                 
                 # M4: Morfologi
@@ -205,13 +220,24 @@ with col2:
                 st.session_state['morph_results'] = morph_results
                 
                 # Tampilkan hasil dalam tabs
-                tab1, tab2, tab3, tab4 = st.tabs([
+                tab_interp, tab1, tab2, tab3, tab4, tab_rep = st.tabs([
+                    "M2: Interpolation",
                     "M1: Grayscale", 
                     "M3: Gaussian Blur", 
                     "M4: Opening", 
-                    "M4: Closing"
+                    "M4: Closing",
+                    "M1: Geometric Representation"
                 ])
                 
+                with tab_interp:
+                    st.image(
+                        preprocess_results['rgb'], 
+                        caption=f"{interpolation_option} Interpolation", 
+                        use_container_width=True, 
+                        clamp=True
+                    )
+                    st.caption("M2: Interpolasi: Mengisi atau meringkas pixel untuk resizing.")
+
                 with tab1:
                     st.image(
                         preprocess_results['gray'], 
@@ -247,6 +273,9 @@ with col2:
                         clamp=True
                     )
                     st.caption("M4: Dilasi → Erosi - Menyambung tepi putus")
+                
+                with tab_rep:
+                    st.caption("M1: Feature gambar diubah menjadi angka")
                     
             except Exception as e:
                 st.error(f"Terjadi kesalahan saat preprocessing: {str(e)}")
