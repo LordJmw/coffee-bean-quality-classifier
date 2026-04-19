@@ -18,16 +18,31 @@ def load_and_convert(image_array):
     
     return img_rgb
 
-def downsample_image(image_array, target_size=(224, 224)):
+def downsample_image(image_array, target_size=(224, 224), interpolation_method="Area-based"):
     """
     M1: Downsampling/Resize ke ukuran seragam 224x224
     - Untuk 256x256 (Normal): downscale sedikit → tetap tajam
     - Untuk 500x500 (Cacat): downscale ~2.2x → efisien
+    M2: Menyesuaikan tipe interpolasi ketika resizing
     """
     h, w = image_array.shape[:2]
     
-    # Resize ke target_size untuk konsistensi
-    img_resized = cv2.resize(image_array, target_size, interpolation=cv2.INTER_AREA)
+    # Dictionary pemetaan opsi string ke flag OpenCV
+    interp_dict = {
+        "Nearest Neighbor": cv2.INTER_NEAREST,
+        "Bilinear interpolation": cv2.INTER_LINEAR,
+        "Bicubic interpolation": cv2.INTER_CUBIC,
+        "Area-based": cv2.INTER_AREA,
+        "Lanczos": cv2.INTER_LANCZOS4,
+        "Exact Bilinear interpolation": cv2.INTER_LINEAR_EXACT,
+        "Exact Nearest Neighbor": cv2.INTER_NEAREST_EXACT
+    }
+    
+    # Ambil flag cv2, gunakan INTER_AREA sebagai fallback default jika tidak ditemukan
+    cv2_interp = interp_dict.get(interpolation_method, cv2.INTER_AREA)
+    
+    # Resize ke target_size menggunakan interpolasi yang dipilih
+    img_resized = cv2.resize(image_array, target_size, interpolation=cv2_interp)
     
     return img_resized
 
@@ -64,15 +79,16 @@ def apply_threshold(gray_image, method='otsu'):
     
     return binary
 
-def preprocess_pipeline(image_array, target_size=(224, 224), blur_kernel=(5, 5), threshold_method='otsu'):
+def preprocess_pipeline(image_array, target_size=(224, 224), blur_kernel=(5, 5), threshold_method='otsu', interpolation_method="Area-based"):
     """
-    Menjalankan seluruh preprocessing (M1, M3, persiapan M4)
+    Menjalankan seluruh preprocessing (Resize, M1, M3, persiapan M4)
     
     Parameters:
     - image_array: Input gambar (numpy array)
     - target_size: Ukuran output resize (default: 224x224)
     - blur_kernel: Kernel size untuk Gaussian Blur
     - threshold_method: Metode thresholding ('otsu' atau 'binary')
+    - interpolation_method: Jenis interpolasi (string)
     
     Returns:
     - Dictionary berisi hasil setiap tahapan
@@ -83,8 +99,8 @@ def preprocess_pipeline(image_array, target_size=(224, 224), blur_kernel=(5, 5),
     # Simpan dimensi asli untuk info
     original_size = img_rgb.shape[:2]
     
-    # M1: Downsampling/Resize
-    img_down = downsample_image(img_rgb, target_size)
+    # M1 w/ M2: Downsampling/Resize (dengan interpolasi spesifik)
+    img_down = downsample_image(img_rgb, target_size, interpolation_method)
     
     # M1: RGB → Grayscale
     img_gray = rgb_to_grayscale(img_down)
