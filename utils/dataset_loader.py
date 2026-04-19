@@ -1,118 +1,125 @@
 # utils/dataset_loader.py
 import os
 
-# Dataset info untuk 18 kelas
+# utils/dataset_loader.py - DATASET_INFO yang SUDAH DISESUAIKAN
+
 DATASET_INFO = {
-    # Grade 1 - Sangat Baik
+    # Grade 1
     'Normal': {
         'label': 'Normal',
         'grade': 1,
         'description': 'Biji normal, tidak cacat',
-        'folder': 'normal'
+        'folder': 'Normal'  # Persis sama
     },
     
-    # Grade 2 - Baik (Cacat Minor)
+    # Grade 2
     'Fade': {
         'label': 'Fade',
         'grade': 2,
         'description': 'Biji pudar/kusam',
-        'folder': 'fade'
+        'folder': 'Fade'
     },
     'Withered': {
         'label': 'Withered',
         'grade': 2,
         'description': 'Biji layu/keriput',
-        'folder': 'withered'
+        'folder': 'Withered'
     },
     
-    # Grade 3 - Cukup (Cacat Sedang)
+    # Grade 3
     'Partial Black': {
         'label': 'Partial Black',
         'grade': 3,
         'description': 'Hitam sebagian',
-        'folder': 'partial_black'
+        'folder': 'Partial Black'
     },
     'Partial Sour': {
         'label': 'Partial Sour',
         'grade': 3,
         'description': 'Asam sebagian',
-        'folder': 'partial_sour'
+        'folder': 'Partial Sour'
     },
     'Immature': {
         'label': 'Immature',
         'grade': 3,
         'description': 'Biji muda',
-        'folder': 'immature'
+        'folder': 'Immature'
     },
     'Shell': {
         'label': 'Shell',
         'grade': 3,
         'description': 'Cangkang kosong',
-        'folder': 'shell'
+        'folder': 'Shell'
     },
     'Husk': {
         'label': 'Husk',
         'grade': 3,
         'description': 'Kulit tanduk',
-        'folder': 'husk'
+        'folder': 'Husk'
     },
     
-    # Grade 4 - Buruk (Cacat Berat)
+    # Grade 4
     'Broken': {
         'label': 'Broken',
         'grade': 4,
         'description': 'Pecah',
-        'folder': 'broken'
+        'folder': 'Broken'
     },
     'Cut': {
         'label': 'Cut',
         'grade': 4,
         'description': 'Terpotong',
-        'folder': 'cut'
+        'folder': 'Cut'
     },
     'Slight Insect Damage': {
         'label': 'Slight Insect',
         'grade': 4,
         'description': 'Lubang hama ringan',
-        'folder': 'slight_insect'
+        'folder': 'Slight Insect Damage'
     },
     'Dry Cherry': {
         'label': 'Dry Cherry',
         'grade': 4,
         'description': 'Kulit kering',
-        'folder': 'dry_cherry'
+        'folder': 'Dry Cherry'
     },
     'Floater': {
         'label': 'Floater',
         'grade': 4,
         'description': 'Biji mengapung',
-        'folder': 'floater'
+        'folder': 'Floater'
     },
     'Parchment': {
         'label': 'Parchment',
         'grade': 4,
         'description': 'Kulit ari',
-        'folder': 'parchment'
+        'folder': 'Parchment'
+    },
+    'Full Sour': {
+        'label': 'Full Sour',
+        'grade': 4,
+        'description': 'Asam total',
+        'folder': 'Full Sour'
     },
     
-    # Grade 5 - Sangat Buruk (Reject)
+    # Grade 5
     'Full Black': {
         'label': 'Full Black',
         'grade': 5,
         'description': 'Hitam total',
-        'folder': 'full_black'
+        'folder': 'Full Black'
     },
     'Fungus Damage': {
         'label': 'Fungus',
         'grade': 5,
         'description': 'Jamur',
-        'folder': 'fungus'
+        'folder': 'Fungus Damage'
     },
     'Severe Insect Damage': {
         'label': 'Severe Insect',
         'grade': 5,
         'description': 'Lubang hama parah',
-        'folder': 'severe_insect'
+        'folder': 'Severe Insect Damage'
     }
 }
 
