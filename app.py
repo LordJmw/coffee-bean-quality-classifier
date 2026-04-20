@@ -8,6 +8,8 @@ from PIL import Image
 from utils.dataset_loader import get_dataset_samples, get_dataset_statistics, load_image_from_dataset, DATASET_INFO
 from utils.preprocessing import preprocess_pipeline
 from utils.morphology import apply_morphology
+from utils.features import extract_all_features
+from utils.clustering import analyze_color_kmeans
 
 # Page config
 st.set_page_config(
@@ -195,7 +197,7 @@ with col2:
                 st.caption(f"Kelas: {st.session_state['expected_class']}")
 
         st.divider()
-        st.subheader("🔬 Hasil Preprocessing (M1-M4)")
+        st.subheader("🔬 Hasil Preprocessing (M1-M7)")
 
         # Jalankan preprocessing
         with st.spinner("Memproses gambar..."):
@@ -219,14 +221,25 @@ with col2:
                 st.session_state['preprocess_results'] = preprocess_results
                 st.session_state['morph_results'] = morph_results
                 
+                # === EKSEKUSI W06: Feature Extraction ===
+                geom_features = extract_all_features(morph_results['closing'], preprocess_results['blur'], preprocess_results['rgb'])
+                
+                # === EKSEKUSI W07: K-Means Clustering ===
+                if geom_features['is_valid'] and geom_features['cropped_rgb'] is not None:
+                    kmeans_img, color_centers, cluster_stats = analyze_color_kmeans(geom_features['cropped_rgb'], k=3)
+                else:
+                    kmeans_img, color_centers, cluster_stats = None, None, None
+                
                 # Tampilkan hasil dalam tabs
-                tab_interp, tab1, tab2, tab3, tab4, tab_rep = st.tabs([
+                tab_interp, tab1, tab2, tab3, tab4, tab_rep, tab6, tab7 = st.tabs([
                     "M2: Interpolation",
                     "M1: Grayscale", 
                     "M3: Gaussian Blur", 
                     "M4: Opening", 
                     "M4: Closing",
-                    "M1: Geometric Representation"
+                    "M1: Geometric Representation",
+                    "M6: Geometric Features",
+                    "M7: K-Means Clustering"
                 ])
                 
                 with tab_interp:
@@ -276,7 +289,47 @@ with col2:
                 
                 with tab_rep:
                     st.caption("M1: Feature gambar diubah menjadi angka")
-                    
+
+                with tab6:
+                    if geom_features['is_valid']:
+                        st.image(geom_features['viz_image'], caption="W06: Visualisasi Ekstraksi Ciri", use_container_width=True)
+                        
+                        st.markdown("### 📊 Metrik Ciri Fisik Biji Kopi (W06)")
+                        c1, c2 = st.columns(2)
+                        
+                        # Menampilkan angka-angka hasil ekstraksi
+                        c1.metric("Area (Luas)", f"{geom_features['area']:.0f} px")
+                        c1.metric("Perimeter (Keliling)", f"{geom_features['perimeter']:.2f} px")
+                        c2.metric("Circularity (Kebulatan)", f"{geom_features['circularity']:.3f}")
+                        c2.metric("Center Cut (Hough Lines)", f"{geom_features['center_cut_lines']} Garis")
+                    else:
+                        st.error("Gagal mendeteksi ciri fisik objek pada gambar ini.")
+
+                with tab7:
+                    if kmeans_img is not None:
+                        st.image(
+                            kmeans_img, 
+                            caption="Hasil Segmentasi Warna (W07) pada Biji Kopi", 
+                            use_container_width=True, 
+                            clamp=True
+                        )
+                        st.markdown("### 🎨 Analisis Proporsi Warna Biji Kopi")
+                        
+                        # Tampilkan persentase warna
+                        if cluster_stats:
+                            for idx, stat in cluster_stats.items():
+                                r, g, b = stat['color']
+                                st.markdown(
+                                    f"<div style='display:flex; align-items:center; margin-bottom:10px;'>"
+                                    f"<div style='width:30px; height:30px; background-color:rgb({r},{g},{b}); border:1px solid #fff; margin-right:15px;'></div>"
+                                    f"<b>Klaster {idx+1} :</b> &nbsp; Menguasai {stat['percentage']:.1f}% area"
+                                    f"</div>", 
+                                    unsafe_allow_html=True
+                                )
+                            st.caption("M7: Jika ada klaster berwarna hitam pekat (Partial Black) atau putih pucat (Fungus) yang persentasenya besar, biji kopi ini masuk kategori Cacat / Reject.")
+                    else:
+                        st.error("Gagal melakukan segmentasi warna karena objek tidak terdeteksi.")
+                        
             except Exception as e:
                 st.error(f"Terjadi kesalahan saat preprocessing: {str(e)}")
                 st.info("Pastikan gambar valid dan modul preprocessing sudah benar.")

@@ -73,9 +73,9 @@ def apply_threshold(gray_image, method='otsu'):
     Konversi Grayscale → Binary (untuk morfologi M4)
     """
     if method == 'otsu':
-        _, binary = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, binary = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     else:
-        _, binary = cv2.threshold(gray_image, 127, 255, cv2.THRESH_BINARY)
+        _, binary = cv2.threshold(gray_image, 127, 255, cv2.THRESH_BINARY_INV)
     
     return binary
 
