@@ -3,6 +3,7 @@ import os
 import cv2
 import numpy as np
 from PIL import Image
+import pandas as pd # Pindahkan import ke atas agar lebih bersih
 
 # Import modul yang sudah dibuat
 from utils.dataset_loader import get_dataset_samples, get_dataset_statistics, load_image_from_dataset, DATASET_INFO
@@ -89,7 +90,6 @@ with st.sidebar:
         samples = get_dataset_samples(dataset_path)
         
         if samples:
-            # Pilih kelas
             selected_class = st.selectbox(
                 "Pilih kelas cacat:",
                 list(samples.keys())
@@ -97,13 +97,10 @@ with st.sidebar:
             
             if selected_class:
                 class_info = samples[selected_class]
-                
-                # Tampilkan info kelas
                 grade_emoji = {1: "🟢", 2: "🟡", 3: "🟠", 4: "🔴", 5: "⚫"}
                 st.info(f"{grade_emoji.get(class_info['grade'], '')} Grade {class_info['grade']}: {class_info['description']}")
                 st.caption(f"Total: {class_info['total_images']} gambar | Label: {class_info['label']}")
                 
-                # Pilih gambar dalam kelas
                 selected_image = st.selectbox(
                     "Pilih gambar:",
                     class_info['images']
@@ -114,7 +111,6 @@ with st.sidebar:
                     st.session_state['sample_image_path'] = image_path
                     st.session_state['expected_grade'] = class_info['grade']
                     st.session_state['expected_class'] = selected_class
-                    
                     st.success(f"✅ {selected_image}")
         else:
             st.warning("⚠️ Dataset belum di-download!")
@@ -151,15 +147,11 @@ with col1:
     elif input_mode == "📦 Gunakan Dataset Sample":
         if 'sample_image_path' in st.session_state:
             image_path = st.session_state['sample_image_path']
-
             if os.path.exists(image_path):
-                # Baca gambar
                 image_rgb = load_image_from_dataset(image_path)
-                
                 if image_rgb is not None:
                     st.image(image_rgb, caption=f"Sampel: {os.path.basename(image_path)}", use_container_width=True)
                     st.success(f"✅ Gambar dari dataset berhasil dimuat!")
-                    
                     st.session_state['input_image'] = image_rgb
                     st.session_state['input_mode'] = 'sample'
                 else:
@@ -174,7 +166,6 @@ with col2:
         st.subheader("📊 Informasi Gambar")
         img = st.session_state['input_image']
 
-        # Tampilkan info dimensi
         original_h, original_w = img.shape[:2]
         st.write(f"**Dimensi Asli:** {original_w} x {original_h} piksel")
         st.write(f"**Dimensi Preprocessing:** {target_size[0]} x {target_size[1]} piksel")
@@ -182,14 +173,12 @@ with col2:
         if len(img.shape) == 3:
             st.write(f"**Channel:** {img.shape[2]} (RGB)")
 
-        # Tampilkan info resize
         if original_w != target_size[0] or original_h != target_size[1]:
             if original_w > target_size[0]:
-                st.caption(f"⬇️ Downscale: {original_w}x{original_h} → {target_size[0]}x{target_size[1]} (Rekomendasi: Area-Based Interpolation)")
+                st.caption(f"⬇️ Downscale: {original_w}x{original_h} → {target_size[0]}x{target_size[1]}")
             else:
-                st.caption(f"⬆️ Upscale: {original_w}x{original_h} → {target_size[0]}x{target_size[1]} (Rekomendasi: Bicubic Interpolation)")
+                st.caption(f"⬆️ Upscale: {original_w}x{original_h} → {target_size[0]}x{target_size[1]}")
 
-        # Tampilkan expected grade jika dari dataset
         if input_mode == "📦 Gunakan Dataset Sample" and 'expected_grade' in st.session_state:
             grade_emoji = {1: "🟢", 2: "🟡", 3: "🟠", 4: "🔴", 5: "⚫"}
             st.write(f"**Expected Grade:** {grade_emoji.get(st.session_state['expected_grade'], '')} {st.session_state['expected_grade']}")
@@ -199,7 +188,6 @@ with col2:
         st.divider()
         st.subheader("🔬 Hasil Preprocessing (M1-M7)")
 
-        # Jalankan preprocessing
         with st.spinner("Memproses gambar..."):
             try:
                 # M1 & M3: Preprocessing
@@ -217,127 +205,194 @@ with col2:
                     close_kernel=(close_kernel, close_kernel)
                 )
                 
-                # Simpan ke session state untuk digunakan nanti
-                st.session_state['preprocess_results'] = preprocess_results
-                st.session_state['morph_results'] = morph_results
-                
-                # === EKSEKUSI W06: Feature Extraction ===
+                # M6: Feature Extraction
                 geom_features = extract_all_features(morph_results['closing'], preprocess_results['blur'], preprocess_results['rgb'])
                 
-                # === EKSEKUSI W07: K-Means Clustering ===
+                # M7: K-Means Clustering
                 if geom_features['is_valid'] and geom_features['cropped_rgb'] is not None:
                     kmeans_img, color_centers, cluster_stats = analyze_color_kmeans(geom_features['cropped_rgb'], k=3)
                 else:
                     kmeans_img, color_centers, cluster_stats = None, None, None
-                
-                # Tampilkan hasil dalam tabs
-                tab_interp, tab1, tab2, tab3, tab4, tab_rep, tab6, tab7 = st.tabs([
+
+                # Setup Tabs (FIXED SYNTAX)
+                tabs = st.tabs([
                     "M2: Interpolation",
                     "M1: Grayscale", 
                     "M3: Gaussian Blur", 
                     "M4: Opening", 
                     "M4: Closing",
-                    "M1: Geometric Representation",
+                    "M5: Edge & Contour",
                     "M6: Geometric Features",
-                    "M7: K-Means Clustering"
+                    "M7: K-Means Clustering",
+                    "Tabel Fitur"
                 ])
                 
+                tab_interp, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = tabs
+                
                 with tab_interp:
-                    st.image(
-                        preprocess_results['rgb'], 
-                        caption=f"{interpolation_option} Interpolation", 
-                        use_container_width=True, 
-                        clamp=True
-                    )
+                    st.image(preprocess_results['rgb'], caption=f"{interpolation_option} Interpolation", use_container_width=True, clamp=True)
                     st.caption("M2: Interpolasi: Mengisi atau meringkas pixel untuk resizing.")
 
                 with tab1:
-                    st.image(
-                        preprocess_results['gray'], 
-                        caption="Grayscale (8-bit) - Hasil Konversi RGB", 
-                        use_container_width=True, 
-                        clamp=True
-                    )
-                    st.caption("M1: Sampling & Quantization")
+                    st.image(preprocess_results['gray'], caption="Grayscale (8-bit)", use_container_width=True, clamp=True)
+                    with st.expander("📊 Lihat Representasi Numerik"):
+                        st.dataframe(preprocess_results['gray'][:10, :10])
                     
                 with tab2:
-                    st.image(
-                        preprocess_results['blur'], 
-                        caption=f"Gaussian Blur (kernel={blur_kernel}x{blur_kernel})", 
-                        use_container_width=True, 
-                        clamp=True
-                    )
-                    st.caption("M3: Linear Filter - Noise Reduction")
+                    st.image(preprocess_results['blur'], caption="Gaussian Blur", use_container_width=True, clamp=True)
                     
                 with tab3:
-                    st.image(
-                        morph_results['opening'], 
-                        caption=f"Opening (kernel={open_kernel}x{open_kernel})", 
-                        use_container_width=True, 
-                        clamp=True
-                    )
-                    st.caption("M4: Erosi → Dilasi - Menghilangkan noise kecil")
+                    st.image(morph_results['opening'], caption="Opening", use_container_width=True, clamp=True)
                     
                 with tab4:
-                    st.image(
-                        morph_results['closing'], 
-                        caption=f"Closing (kernel={close_kernel}x{close_kernel})", 
-                        use_container_width=True, 
-                        clamp=True
-                    )
-                    st.caption("M4: Dilasi → Erosi - Menyambung tepi putus")
-                
-                with tab_rep:
-                    st.caption("M1: Feature gambar diubah menjadi angka")
+                    st.image(morph_results['closing'], caption="Closing", use_container_width=True, clamp=True)
+
+                with tab5:
+                    st.markdown("### M5: Feature Detection (Edges & Contours)")
+                    edges = cv2.Canny(preprocess_results['blur'], 50, 150)
+                    contour_img = preprocess_results['rgb'].copy()
+                    contours, _ = cv2.findContours(morph_results['closing'], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    cv2.drawContours(contour_img, contours, -1, (0, 255, 0), 2)
+                    
+                    c_edge, c_contour = st.columns(2)
+                    c_edge.image(edges, caption="Canny Edge Detection", use_container_width=True, clamp=True)
+                    c_contour.image(contour_img, caption="Contour Detection", use_container_width=True)
+                    
+                    if contours:
+                        main_contour = max(contours, key=cv2.contourArea)
+                        area = cv2.contourArea(main_contour)
+                        st.markdown("---")
+                        st.metric("Jumlah Kontur", len(contours))
+                        st.metric("Luas Kontur Utama", f"{area:.0f} px")
 
                 with tab6:
                     if geom_features['is_valid']:
-                        st.image(geom_features['viz_image'], caption="W06: Visualisasi Ekstraksi Ciri", use_container_width=True)
-                        
-                        st.markdown("### 📊 Metrik Ciri Fisik Biji Kopi (W06)")
+                        st.image(geom_features['viz_image'], caption="M6: Visualisasi Ekstraksi Ciri", use_container_width=True)
                         c1, c2 = st.columns(2)
-                        
-                        # Menampilkan angka-angka hasil ekstraksi
                         c1.metric("Area (Luas)", f"{geom_features['area']:.0f} px")
                         c1.metric("Perimeter (Keliling)", f"{geom_features['perimeter']:.2f} px")
-                        c2.metric("Circularity (Kebulatan)", f"{geom_features['circularity']:.3f}")
-                        c2.metric("Center Cut (Hough Lines)", f"{geom_features['center_cut_lines']} Garis")
+                        c2.metric("Circularity", f"{geom_features['circularity']:.3f}")
+                        c2.metric("Hough Lines", f"{geom_features['center_cut_lines']}")
                     else:
-                        st.error("Gagal mendeteksi ciri fisik objek pada gambar ini.")
+                        st.error("Gagal mendeteksi ciri fisik objek.")
 
                 with tab7:
                     if kmeans_img is not None:
-                        st.image(
-                            kmeans_img, 
-                            caption="Hasil Segmentasi Warna (W07) pada Biji Kopi", 
-                            use_container_width=True, 
-                            clamp=True
-                        )
-                        st.markdown("### 🎨 Analisis Proporsi Warna Biji Kopi")
-                        
-                        # Tampilkan persentase warna
+                        st.image(kmeans_img, caption="Hasil Segmentasi Warna (M7)", use_container_width=True, clamp=True)
                         if cluster_stats:
                             for idx, stat in cluster_stats.items():
                                 r, g, b = stat['color']
                                 st.markdown(
                                     f"<div style='display:flex; align-items:center; margin-bottom:10px;'>"
                                     f"<div style='width:30px; height:30px; background-color:rgb({r},{g},{b}); border:1px solid #fff; margin-right:15px;'></div>"
-                                    f"<b>Klaster {idx+1} :</b> &nbsp; Menguasai {stat['percentage']:.1f}% area"
+                                    f"<b>Klaster {idx+1} :</b> &nbsp; {stat['percentage']:.1f}% area"
                                     f"</div>", 
                                     unsafe_allow_html=True
                                 )
-                            st.caption("M7: Jika ada klaster berwarna hitam pekat (Partial Black) atau putih pucat (Fungus) yang persentasenya besar, biji kopi ini masuk kategori Cacat / Reject.")
                     else:
-                        st.error("Gagal melakukan segmentasi warna karena objek tidak terdeteksi.")
-                        
-            except Exception as e:
-                st.error(f"Terjadi kesalahan saat preprocessing: {str(e)}")
-                st.info("Pastikan gambar valid dan modul preprocessing sudah benar.")
-    else:
-        st.info("👈 Gambar akan ditampilkan di sini setelah diupload/dipilih")
+                        st.error("Gagal melakukan segmentasi warna.")
+                
+                with tab8:
+                    st.markdown("### 🔍 Analisis Fitur & Standar Mutu")
+                    
+                    if geom_features['is_valid'] and kmeans_img is not None:
+                        # --- BAGIAN 1: VISUALISASI ---
+                        st.markdown("#### 1. Visualisasi Analisis")
+                        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+                        with m_col1: st.image(geom_features['viz_image'], caption="Geometri", use_container_width=True)
+                        with m_col2: st.image(morph_results['closing'], caption="Pola Retakan", use_container_width=True)
+                        with m_col3: st.image(kmeans_img, caption="Klaster Warna", use_container_width=True)
+                        with m_col4:
+                            edges = cv2.Canny(preprocess_results['blur'], 50, 150)
+                            st.image(edges, caption="Tekstur Permukaan", use_container_width=True)
 
-# ============================================
-# FOOTER
-# ============================================
+                        st.divider()
+
+                        # --- BAGIAN 2: LOGIKA PENILAIAN (PUSAT DATA) ---
+                        total_score = 100
+                        # CRITICAL: Inisialisasi list ini hanya SEKALI di awal
+                        analysis_details = []
+
+                        # A. ANALISIS FISIK (Circularity)
+                        if geom_features['circularity'] < 0.60:
+                            p = 25
+                            total_score -= p
+                            analysis_details.append(("error", f"❌ **Bentuk Tidak Utuh:** Circularity rendah ({geom_features['circularity']:.2f}). Indikasi Biji Pecah (Broken). (-{p} pts)"))
+                        else:
+                            analysis_details.append(("info", f"✅ **Bentuk Normal:** Circularity ideal ({geom_features['circularity']:.2f}). (+0 pts)"))
+                        
+                        # B. ANALISIS RETAKAN (Hough Lines)
+                        if geom_features['center_cut_lines'] > 6:
+                            p = 30
+                            total_score -= p
+                            analysis_details.append(("error", f"❌ **Retakan Parah:** Terdeteksi {geom_features['center_cut_lines']} jalur retakan mendalam. (-{p} pts)"))
+                        elif geom_features['center_cut_lines'] > 2:
+                            p = 10
+                            total_score -= p
+                            analysis_details.append(("warning", f"⚠️ **Cacat Tekstur:** Terdeteksi {geom_features['center_cut_lines']} retakan halus. (-{p} pts)"))
+                        else:
+                            analysis_details.append(("info", f"✅ **Tekstur Utuh:** Tidak ditemukan retakan signifikan. (+0 pts)"))
+
+                        # C. ANALISIS WARNA (Logika Rasio)
+                        black_area = 0
+                        sour_area = 0
+                        for idx, stat in cluster_stats.items():
+                            r, g, b = stat['color']
+                            total_rgb = r + g + b
+                            if total_rgb == 0: continue 
+                            g_ratio = g / total_rgb
+                            r_to_g_ratio = r / g if g > 0 else 2.0
+                            
+                            if total_rgb < 130 and r < 50:
+                                black_area += stat['percentage']
+                            elif g_ratio < 0.35 and r_to_g_ratio > 1.05:
+                                sour_area += stat['percentage']
+
+                        if sour_area > 10:
+                            p = 25
+                            total_score -= p
+                            analysis_details.append(("warning", f"⚠️ **Cacat Partial Sour:** Area cokelat/keruh {sour_area:.1f}%. (-{p} pts)"))
+                        
+                        if black_area > 5:
+                            p = 40
+                            total_score -= p
+                            analysis_details.append(("error", f"❌ **Cacat Full Black:** Area hitam pekat {black_area:.1f}%. (-{p} pts)"))
+                        
+                        # Hanya tambah pesan "Warna Normal" jika tidak ada cacat warna
+                        if sour_area <= 10 and black_area <= 5:
+                            analysis_details.append(("info", "✅ **Warna Normal:** Komponen Hijau-Zaitun dominan dan stabil. (+0 pts)"))
+
+                        # --- BAGIAN RENDER (DI SINI SEMUA DETAIL DITAMPILKAN) ---
+                        st.markdown("#### 2. Rincian Penilaian")
+                        # Pastikan loop ini berada di luar blok warna agar merender SEMUA isi analysis_details
+                        for style, message in analysis_details:
+                            if style == "info": st.info(message)
+                            elif style == "warning": st.warning(message)
+                            else: st.error(message)
+
+                        st.divider()
+
+                        # --- BAGIAN 3: SKOR AKHIR ---
+                        final_score = max(total_score, 0)
+                        st.markdown(f"## **Skor Akhir Mutu: {final_score}**")
+                        
+                        if final_score >= 80: st.success("🟢 **HASIL: GRADE 1-2 (MUTU LAYAK)**")
+                        elif final_score >= 60: st.warning("🟡 **HASIL: GRADE 3 (MUTU RENDAH)**")
+                        else: st.error("🔴 **HASIL: GRADE 4-5 (REJECT/CACAT TOTAL)**")
+
+                        # Export CSV
+                        summary_df = pd.DataFrame({
+                            'Metrik': ['Circularity', 'Hough Lines', 'Black %', 'Sour %', 'Total Skor'],
+                            'Nilai': [f"{geom_features['circularity']:.3f}", geom_features['center_cut_lines'], f"{black_area:.1f}%", f"{sour_area:.1f}%", final_score]
+                        })
+                        st.download_button("📥 Ekspor Data Analisis", summary_df.to_csv(index=False), "analisis_kopi.csv")
+             
+
+            except Exception as e:
+                st.error(f"Terjadi kesalahan: {str(e)}")
+    else:
+        st.info("Gambar akan ditampilkan di sini setelah diupload/dipilih")
+
+# Footer
 st.divider()
-st.caption("🎓 Tugas Computer Vision - Implementasi M1-M7 untuk Klasifikasi Biji Kopi")
+st.caption("🎓 Tugas Computer Vision - Implementasi M1-M7")

@@ -58,3 +58,20 @@ def analyze_color_kmeans(cropped_rgb, k=3):
     segmented_image[~mask_background] = centers[labels]
 
     return segmented_image, centers, cluster_stats
+
+# utils/clustering.py - Tambahan
+from sklearn.mixture import GaussianMixture
+
+def analyze_color_gmm(cropped_rgb, n_components=3):
+    # Sama seperti K-Means tapi pakai GMM
+    mask = (cropped_rgb[:,:,0] == 0) & (cropped_rgb[:,:,1] == 0) & (cropped_rgb[:,:,2] == 0)
+    bean_pixels = cropped_rgb[~mask]
+    
+    if len(bean_pixels) == 0:
+        return cropped_rgb, None
+    
+    gmm = GaussianMixture(n_components=n_components, random_state=42)
+    labels = gmm.fit_predict(bean_pixels)
+    centers = gmm.means_.astype(np.uint8)
+    
+    # ... (mirip dengan K-Means)
