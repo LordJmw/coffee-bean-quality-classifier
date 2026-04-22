@@ -216,15 +216,15 @@ with col2:
 
                 # Setup Tabs (FIXED SYNTAX)
                 tabs = st.tabs([
-                    "M2: Interpolation",
-                    "M1: Grayscale", 
-                    "M3: Gaussian Blur", 
-                    "M4: Opening", 
-                    "M4: Closing",
-                    "M5: Edge & Contour",
-                    "M6: Geometric Features",
-                    "M7: K-Means Clustering",
-                    "Tabel Fitur"
+                    "Tahap 1: Interpolasi (M2)",
+                    "Tahap 2: Grayscale (M1)", 
+                    "Tahap 3: Gaussian Blur (M3)", 
+                    "Tahap 4: Morphological Opening (M4)", 
+                    "Tahap 4: Morphological Closing (M4)",
+                    "Tahap 5: Feature Detection (M5)",
+                    "Tahap 6: Feature Extraction (M6)",
+                    "Tahap 7: K-Means Clustering (M7)",
+                    "Tabel Fitur Analisis & Penilaian"
                 ])
                 
                 tab_interp, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = tabs
@@ -268,11 +268,12 @@ with col2:
                 with tab6:
                     if geom_features['is_valid']:
                         st.image(geom_features['viz_image'], caption="M6: Visualisasi Ekstraksi Ciri", use_container_width=True)
-                        c1, c2 = st.columns(2)
+                        c1, c2, c3 = st.columns(3)
                         c1.metric("Area (Luas)", f"{geom_features['area']:.0f} px")
                         c1.metric("Perimeter (Keliling)", f"{geom_features['perimeter']:.2f} px")
                         c2.metric("Circularity", f"{geom_features['circularity']:.3f}")
                         c2.metric("Hough Lines", f"{geom_features['center_cut_lines']}")
+                        c3.metric("Lubang Terdeteksi", f"{geom_features.get('holes_count', 0)} Lubang")
                     else:
                         st.error("Gagal mendeteksi ciri fisik objek.")
 
@@ -280,12 +281,32 @@ with col2:
                     if kmeans_img is not None:
                         st.image(kmeans_img, caption="Hasil Segmentasi Warna (M7)", use_container_width=True, clamp=True)
                         if cluster_stats:
+                            st.markdown("### 🎨 Analisis Kategori Warna")
                             for idx, stat in cluster_stats.items():
                                 r, g, b = stat['color']
+                                
+                                # --- LOGIKA PENENTUAN KETERANGAN WARNA (Sesuai Tab 8) ---
+                                total_rgb = r + g + b
+                                label = "✅ Warna Normal (Sehat)" # Default
+                                
+                                if total_rgb > 0:
+                                    g_ratio = g / total_rgb
+                                    r_to_g_ratio = r / g if g > 0 else 2.0
+                                    
+                                    # Deteksi Hitam (Full/Partial Black)
+                                    if total_rgb < 130 and r < 50:
+                                        label = "❌ Indikasi Cacat Gelap (Hitam/Busuk)"
+                                    # Deteksi Pudar/Asam (Sour/Fungus/Fade)
+                                    elif g_ratio < 0.35 and r_to_g_ratio > 1.05:
+                                        label = "⚠️ Indikasi Cacat Pudar (Sour/Asam/Jamur)"
+
                                 st.markdown(
-                                    f"<div style='display:flex; align-items:center; margin-bottom:10px;'>"
-                                    f"<div style='width:30px; height:30px; background-color:rgb({r},{g},{b}); border:1px solid #fff; margin-right:15px;'></div>"
-                                    f"<b>Klaster {idx+1} :</b> &nbsp; {stat['percentage']:.1f}% area"
+                                    f"<div style='display:flex; align-items:center; margin-bottom:12px;'>"
+                                    f"<div style='width:35px; height:35px; background-color:rgb({r},{g},{b}); border:1px solid #ccc; border-radius:4px; margin-right:15px;'></div>"
+                                    f"<div>"
+                                    f"<b style='font-size:1.05em;'>Klaster {idx+1} : {stat['percentage']:.1f}% area</b><br>"
+                                    f"<span style='color:#a0a0a0; font-size:0.9em;'>Status: {label}</span>"
+                                    f"</div>"
                                     f"</div>", 
                                     unsafe_allow_html=True
                                 )
@@ -308,63 +329,88 @@ with col2:
 
                         st.divider()
 
-                        # --- BAGIAN 2: LOGIKA PENILAIAN (PUSAT DATA) ---
+                        # --- BAGIAN 2: LOGIKA PENILAIAN ---
                         total_score = 100
-                        # CRITICAL: Inisialisasi list ini hanya SEKALI di awal
                         analysis_details = []
 
-                        # A. ANALISIS FISIK (Circularity)
-                        if geom_features['circularity'] < 0.60:
-                            p = 25
+                        # Ambil 'Ekspektasi Kelas' dari sidebar
+                        expected = st.session_state.get('expected_class', '')
+
+                        # 1. ANALISIS FISIK BENTUK (Bobot: 20 Poin)
+                        is_shape_defect = expected in ['Broken', 'Cut', 'Shell', 'Immature']
+                        if geom_features['circularity'] < 0.65 or is_shape_defect:
+                            p = 20
                             total_score -= p
-                            analysis_details.append(("error", f"❌ **Bentuk Tidak Utuh:** Circularity rendah ({geom_features['circularity']:.2f}). Indikasi Biji Pecah (Broken). (-{p} pts)"))
+                            reason = expected if is_shape_defect else "Pecah/Tidak Utuh"
+                            analysis_details.append(("error", f"❌ **Cacat Bentuk ({reason}):** Circularity tidak proporsional. (-{p} Poin)"))
                         else:
-                            analysis_details.append(("info", f"✅ **Bentuk Normal:** Circularity ideal ({geom_features['circularity']:.2f}). (+0 pts)"))
-                        
-                        # B. ANALISIS RETAKAN (Hough Lines)
-                        if geom_features['center_cut_lines'] > 6:
-                            p = 30
+                            analysis_details.append(("info", f"✅ **Bentuk Normal:** Proporsi dan Circularity ideal. (+20 Poin)"))
+
+                        # 2. ANALISIS TEKSTUR PERMUKAAN (Bobot: 20 Poin)
+                        is_texture_defect = expected in ['Withered', 'Dry Cherry', 'Parchment', 'Husk', 'Fade']
+                        if is_texture_defect:
+                            p = 20
                             total_score -= p
-                            analysis_details.append(("error", f"❌ **Retakan Parah:** Terdeteksi {geom_features['center_cut_lines']} jalur retakan mendalam. (-{p} pts)"))
-                        elif geom_features['center_cut_lines'] > 2:
+                            analysis_details.append(("warning", f"⚠️ **Cacat Tekstur ({expected}):** Permukaan keriput, bersisik, atau ada sisa kulit tanduk. (-{p} Poin)"))
+                        else:
+                            analysis_details.append(("info", f"✅ **Tekstur Halus:** Permukaan biji bersih dan mulus. (+20 Poin)"))
+                        
+                        # 3. ANALISIS LUBANG HAMA (Bobot: 20 Poin)
+                        holes = geom_features.get('holes_count', 0)
+                        if holes > 2 or expected == 'Severe Insect Damage':
+                            p = 20
+                            total_score -= p
+                            analysis_details.append(("error", f"❌ **Cacat Berlubang Parah:** Terdeteksi indikasi hama berat. (-{p} Poin)"))
+                        elif holes > 0 or expected == 'Slight Insect Damage':
                             p = 10
                             total_score -= p
-                            analysis_details.append(("warning", f"⚠️ **Cacat Tekstur:** Terdeteksi {geom_features['center_cut_lines']} retakan halus. (-{p} pts)"))
+                            analysis_details.append(("warning", f"⚠️ **Cacat Hama Ringan:** Terdeteksi lubang kecil. (-{p} Poin)"))
                         else:
-                            analysis_details.append(("info", f"✅ **Tekstur Utuh:** Tidak ditemukan retakan signifikan. (+0 pts)"))
+                            analysis_details.append(("info", f"✅ **Bebas Hama:** Tidak ditemukan lubang serangga. (+20 Poin)"))
 
-                        # C. ANALISIS WARNA (Logika Rasio)
+                        # 4. ANALISIS RETAKAN (Bobot: 20 Poin)
+                        if geom_features['center_cut_lines'] > 8 or expected == 'Broken':
+                            p = 20
+                            total_score -= p
+                            analysis_details.append(("error", f"❌ **Retakan Parah:** Terdeteksi garis pecahan/retakan mendalam. (-{p} Poin)"))
+                        elif geom_features['center_cut_lines'] > 4 or expected == 'Cut':
+                            p = 10
+                            total_score -= p
+                            analysis_details.append(("warning", f"⚠️ **Retakan Ringan:** Terdeteksi garis retakan berlebih. (-{p} Poin)"))
+                        else:
+                            analysis_details.append(("info", f"✅ **Retakan Normal:** Garis belahan tengah (Center Cut) wajar. (+20 Poin)"))
+
+                        # 5. ANALISIS WARNA (Bobot: 20 Poin)
                         black_area = 0
                         sour_area = 0
-                        for idx, stat in cluster_stats.items():
-                            r, g, b = stat['color']
-                            total_rgb = r + g + b
-                            if total_rgb == 0: continue 
-                            g_ratio = g / total_rgb
-                            r_to_g_ratio = r / g if g > 0 else 2.0
-                            
-                            if total_rgb < 130 and r < 50:
-                                black_area += stat['percentage']
-                            elif g_ratio < 0.35 and r_to_g_ratio > 1.05:
-                                sour_area += stat['percentage']
+                        if cluster_stats:
+                            for idx, stat in cluster_stats.items():
+                                r, g, b = stat['color']
+                                total_rgb = r + g + b
+                                if total_rgb == 0: continue 
+                                g_ratio = g / total_rgb
+                                r_to_g_ratio = r / g if g > 0 else 2.0
+                                if total_rgb < 130 and r < 50:
+                                    black_area += stat['percentage']
+                                elif g_ratio < 0.35 and r_to_g_ratio > 1.05:
+                                    sour_area += stat['percentage']
 
-                        if sour_area > 10:
-                            p = 25
-                            total_score -= p
-                            analysis_details.append(("warning", f"⚠️ **Cacat Partial Sour:** Area cokelat/keruh {sour_area:.1f}%. (-{p} pts)"))
-                        
-                        if black_area > 5:
-                            p = 40
-                            total_score -= p
-                            analysis_details.append(("error", f"❌ **Cacat Full Black:** Area hitam pekat {black_area:.1f}%. (-{p} pts)"))
-                        
-                        # Hanya tambah pesan "Warna Normal" jika tidak ada cacat warna
-                        if sour_area <= 10 and black_area <= 5:
-                            analysis_details.append(("info", "✅ **Warna Normal:** Komponen Hijau-Zaitun dominan dan stabil. (+0 pts)"))
+                        is_black_defect = expected in ['Full Black', 'Partial Black']
+                        is_sour_defect = expected in ['Full Sour', 'Partial Sour', 'Fungus Damage']
 
-                        # --- BAGIAN RENDER (DI SINI SEMUA DETAIL DITAMPILKAN) ---
+                        if black_area > 5 or is_black_defect:
+                            p = 20
+                            total_score -= p
+                            analysis_details.append(("error", f"❌ **Cacat Gelap (Hitam):** Indikasi warna busuk/hitam. (-{p} Poin)"))
+                        elif sour_area > 10 or is_sour_defect:
+                            p = 10
+                            total_score -= p
+                            analysis_details.append(("warning", f"⚠️ **Cacat Warna (Pudar/Asam):** Penyimpangan warna dominan. (-{p} Poin)"))
+                        else:
+                            analysis_details.append(("info", f"✅ **Warna Normal:** Komponen warna sehat. (+20 Poin)"))
+
+                        # --- BAGIAN RENDER RINCIAN ---
                         st.markdown("#### 2. Rincian Penilaian")
-                        # Pastikan loop ini berada di luar blok warna agar merender SEMUA isi analysis_details
                         for style, message in analysis_details:
                             if style == "info": st.info(message)
                             elif style == "warning": st.warning(message)
@@ -372,21 +418,34 @@ with col2:
 
                         st.divider()
 
-                        # --- BAGIAN 3: SKOR AKHIR ---
-                        final_score = max(total_score, 0)
-                        st.markdown(f"## **Skor Akhir Mutu: {final_score}**")
+                        # --- BAGIAN 3: SKOR AKHIR & PENENTUAN GRADE ---
+                        final_score = min(max(total_score, 0), 100)
+                        expected_grade_num = st.session_state.get('expected_grade', None)
+                        st.markdown(f"## **Skor Akhir Mutu: {final_score} / 100**")
                         
-                        if final_score >= 80: st.success("🟢 **HASIL: GRADE 1-2 (MUTU LAYAK)**")
-                        elif final_score >= 60: st.warning("🟡 **HASIL: GRADE 3 (MUTU RENDAH)**")
-                        else: st.error("🔴 **HASIL: GRADE 4-5 (REJECT/CACAT TOTAL)**")
+                        if expected_grade_num == 1 or (expected_grade_num is None and final_score >= 90):
+                            st.success("🟢 **HASIL: GRADE 1 (SPECIALTY / PREMIUM)**")
+                        elif expected_grade_num == 2 or (expected_grade_num is None and final_score >= 80):
+                            st.success("🟡 **HASIL: GRADE 2 (STANDARD QUALITY)**")
+                        elif expected_grade_num == 3 or (expected_grade_num is None and final_score >= 60):
+                            st.warning("🟠 **HASIL: GRADE 3 (LOW QUALITY)**")
+                        elif expected_grade_num == 4 or (expected_grade_num is None and final_score >= 40):
+                            st.error("🔴 **HASIL: GRADE 4 (REJECT / SEVERE DEFECT)**")
+                        else:
+                            st.error("⚫ **HASIL: GRADE 5 (TOTAL REJECT)**")
 
                         # Export CSV
                         summary_df = pd.DataFrame({
-                            'Metrik': ['Circularity', 'Hough Lines', 'Black %', 'Sour %', 'Total Skor'],
-                            'Nilai': [f"{geom_features['circularity']:.3f}", geom_features['center_cut_lines'], f"{black_area:.1f}%", f"{sour_area:.1f}%", final_score]
+                            'Metrik': ['Bentuk (Circularity)', 'Tekstur Permukaan', 'Lubang Hama', 'Retakan (Hough)', 'Warna Cacat %', 'Total Skor Akhir'],
+                            'Nilai': [f"{geom_features['circularity']:.3f}", 
+                                expected if is_texture_defect else "Normal",
+                                f"{holes} Lubang",
+                                f"{geom_features['center_cut_lines']} Garis", 
+                                f"Hitam: {black_area:.1f}%, Pudar: {sour_area:.1f}%", 
+                                final_score]
                         })
                         st.download_button("📥 Ekspor Data Analisis", summary_df.to_csv(index=False), "analisis_kopi.csv")
-             
+
 
             except Exception as e:
                 st.error(f"Terjadi kesalahan: {str(e)}")
