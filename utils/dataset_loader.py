@@ -13,12 +13,7 @@ DATASET_INFO = {
     },
     
     # Grade 2
-    'Fade': {
-        'label': 'Fade',
-        'grade': 2,
-        'description': 'Biji pudar/kusam',
-        'folder': 'Fade'
-    },
+
     'Withered': {
         'label': 'Withered',
         'grade': 2,
@@ -27,36 +22,15 @@ DATASET_INFO = {
     },
     
     # Grade 3
-    'Partial Black': {
-        'label': 'Partial Black',
-        'grade': 3,
-        'description': 'Hitam sebagian',
-        'folder': 'Partial Black'
-    },
+
     'Partial Sour': {
         'label': 'Partial Sour',
         'grade': 3,
         'description': 'Asam sebagian',
         'folder': 'Partial Sour'
     },
-    'Immature': {
-        'label': 'Immature',
-        'grade': 3,
-        'description': 'Biji muda',
-        'folder': 'Immature'
-    },
-    'Shell': {
-        'label': 'Shell',
-        'grade': 3,
-        'description': 'Cangkang kosong',
-        'folder': 'Shell'
-    },
-    'Husk': {
-        'label': 'Husk',
-        'grade': 3,
-        'description': 'Kulit tanduk',
-        'folder': 'Husk'
-    },
+
+
     
     # Grade 4
     'Broken': {
@@ -65,56 +39,17 @@ DATASET_INFO = {
         'description': 'Pecah',
         'folder': 'Broken'
     },
-    'Cut': {
-        'label': 'Cut',
-        'grade': 4,
-        'description': 'Terpotong',
-        'folder': 'Cut'
-    },
-    'Slight Insect Damage': {
-        'label': 'Slight Insect',
-        'grade': 4,
-        'description': 'Lubang hama ringan',
-        'folder': 'Slight Insect Damage'
-    },
+
     'Dry Cherry': {
         'label': 'Dry Cherry',
         'grade': 4,
         'description': 'Kulit kering',
         'folder': 'Dry Cherry'
     },
-    'Floater': {
-        'label': 'Floater',
-        'grade': 4,
-        'description': 'Biji mengapung',
-        'folder': 'Floater'
-    },
-    'Parchment': {
-        'label': 'Parchment',
-        'grade': 4,
-        'description': 'Kulit ari',
-        'folder': 'Parchment'
-    },
-    'Full Sour': {
-        'label': 'Full Sour',
-        'grade': 4,
-        'description': 'Asam total',
-        'folder': 'Full Sour'
-    },
     
     # Grade 5
-    'Full Black': {
-        'label': 'Full Black',
-        'grade': 5,
-        'description': 'Hitam total',
-        'folder': 'Full Black'
-    },
-    'Fungus Damage': {
-        'label': 'Fungus',
-        'grade': 5,
-        'description': 'Jamur',
-        'folder': 'Fungus Damage'
-    },
+
+    
     'Severe Insect Damage': {
         'label': 'Severe Insect',
         'grade': 5,
