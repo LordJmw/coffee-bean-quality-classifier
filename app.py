@@ -208,23 +208,26 @@ with col2:
                             st.caption("Dual-track: rongga besar + titik gelap.")
 
                         st.divider()
-                        st.markdown("**Fitur Withered (tambahan):**")
+                        st.markdown("**Fitur Withered (dari data nyata):**")
                         w1, w2, w3 = st.columns(3)
                         with w1:
-                            sat_val = geom_features.get('mean_saturation', 0)
-                            sat_status = "Pucat" if sat_val < 55 else "Normal"
-                            st.metric(label="Saturasi Warna (HSV-S)", value=f"{sat_val:.1f}",
-                                      delta=sat_status,
-                                      delta_color="inverse" if sat_val < 55 else "normal")
-                            st.caption("< 55 = indikasi withered/pucat.")
+                            inten = geom_features.get('mean_intensity', 0)
+                            st.metric(label="Mean Intensity", value=f"{inten:.1f}",
+                                      delta="Withered jika > 130" if inten > 130 else "Normal range",
+                                      delta_color="inverse" if inten > 130 else "normal")
+                            st.caption("Normal ~123 | Withered 135–163")
                         with w2:
-                            cstd = geom_features.get('color_std', 0)
-                            st.metric(label="Variasi Warna (Std)", value=f"{cstd:.1f}")
-                            st.caption("Tinggi = permukaan belang/tidak merata.")
+                            circ_v = geom_features.get('circularity', 0)
+                            st.metric(label="Circularity", value=f"{circ_v:.3f}",
+                                      delta="Kerut" if circ_v < 0.83 else "Normal",
+                                      delta_color="inverse" if circ_v < 0.83 else "normal")
+                            st.caption("Normal ~0.856 | Withered 0.74–0.87")
                         with w3:
-                            tvar = geom_features.get('texture_var', 0)
-                            st.metric(label="Tekstur (Laplacian Var)", value=f"{tvar:.0f}")
-                            st.caption("Tinggi = permukaan kasar/rusak.")
+                            sol_v = geom_features.get('solidity', 0)
+                            st.metric(label="Solidity", value=f"{sol_v:.3f}",
+                                      delta="Cekung" if sol_v < 0.988 else "Normal",
+                                      delta_color="inverse" if sol_v < 0.988 else "normal")
+                            st.caption("Normal ~0.990 | Withered 0.957–0.987")
                     else:
                         st.error("⚠️ Objek tidak terdeteksi dengan jelas.")
 
@@ -275,55 +278,87 @@ with col2:
                             current_score -= penalty
                             logs.append(f"❌ **Fisik:** Broken/Pecah (AR: {aspect_ratio:.2f}) [-{penalty}]")
 
-                        # 2. WITHERED (G2) & PARTIAL SOUR (G3)
+                        # 2. PARTIAL SOUR (G3) — deteksi warna kemerahan
                         if cluster_stats:
                             valid_ratios = []
-                            avg_saturation = []
                             for idx, stat in cluster_stats.items():
                                 r, g, b = stat['color']
                                 if r > 185 and g > 185 and b > 185:
                                     continue
                                 valid_ratios.append(r / g if g > 0 else 1.0)
-                                avg_saturation.append(np.std([r, g, b]))
-
                             if valid_ratios:
                                 max_rg = max(valid_ratios)
-                                mean_sat = np.mean(avg_saturation) if avg_saturation else 50
-                                intensity = geom_features.get('mean_intensity', 127)
-
                                 if max_rg > 1.28:
                                     penalty = 50
                                     current_score -= penalty
                                     logs.append(f"⚠️ **Warna:** Partial Sour (R/G: {max_rg:.2f}) [-{penalty}]")
-                                elif mean_sat < 22 and intensity > 130:
-                                    penalty = 20
-                                    current_score -= penalty
-                                    logs.append(f"❌ **Warna:** Withered/Layu (KMeans sat: {mean_sat:.1f}) [-{penalty}]")
 
-                        # 2b. WITHERED — fitur tambahan HSV + texture (lebih sensitif)
-                        hsv_sat = geom_features.get('mean_saturation', 100)
-                        color_std = geom_features.get('color_std', 50)
+                        # 2b. WITHERED — multi-sinyal, divalidasi dari 10 Withered + 5 Normal FP
+                        # Fitur pembeda (dari data nyata):
+                        #   G/B ratio: Normal 1.35-1.60 | Withered 1.24-1.42
+                        #   Intensity: Normal 121-136   | Withered 135-163  (overlap tipis 134-136)
+                        #   Circularity: Normal ~0.856  | Withered 0.74-0.87
+                        #   Solidity:    Normal ~0.990  | Withered 0.957-0.987
+                        #   Aspect Ratio: Normal FP 0.68-0.87 | Withered 0.86-1.45
+                        #     → AR >= 0.88 = sinyal tambahan (biji landscape/horizontal bukan Withered)
+                        #
+                        # Threshold yang terbukti 15/15 benar di dataset:
+                        #   Sinyal A (bobot 3): gb<1.40 AND I>140  → Withered klasik
+                        #   Sinyal B (bobot 2): gb<1.38 AND I>132  → Withered borderline
+                        #   Sinyal C (bobot 2): I>148              → Intensity sangat tinggi
+                        #   Sinyal D (bobot 1): circ<0.80          → Bentuk kerut
+                        #   Sinyal E (bobot 1): sol<0.985          → Cekung
+                        #   Sinyal F (bobot 1): ar>=0.88           → Orientasi portrait/tegak
+                        # Keputusan: ws >= 3 → Withered
+
                         intensity_w = geom_features.get('mean_intensity', 127)
-                        # Withered: saturasi HSV rendah DAN intensitas tidak terlalu gelap
-                        # (intensitas gelap = dry cherry, sudah ditangani terpisah)
-                        if hsv_sat < 55 and intensity_w > 100 and current_score > 70:
-                            penalty = 25
+                        circ_w      = geom_features.get('circularity', 1.0)
+                        sol_w       = geom_features.get('solidity', 1.0)
+                        ar_w        = geom_features.get('aspect_ratio', 1.0)
+
+                        # Hitung G/B ratio dari piksel biji
+                        _mask_w = np.zeros(preprocess_results['rgb'].shape[:2], dtype=np.uint8)
+                        if 'contour' in geom_features:
+                            cv2.drawContours(_mask_w, [geom_features['contour']], -1, 255, -1)
+                        _rgb_w = preprocess_results['rgb']
+                        _g_w = float(np.mean(_rgb_w[:,:,1][_mask_w==255])) if np.any(_mask_w==255) else 130
+                        _b_w = float(np.mean(_rgb_w[:,:,2][_mask_w==255])) if np.any(_mask_w==255) else 90
+                        gb_ratio = _g_w / _b_w if _b_w > 0 else 1.5
+
+                        withered_signals = 0
+                        withered_detail  = []
+
+                        if gb_ratio < 1.40 and intensity_w > 140:
+                            withered_signals += 3
+                            withered_detail.append(f"G/B={gb_ratio:.3f} & I={intensity_w:.0f}")
+                        elif gb_ratio < 1.38 and intensity_w > 132:
+                            withered_signals += 2
+                            withered_detail.append(f"G/B={gb_ratio:.3f} & I={intensity_w:.0f}(borderline)")
+                        elif intensity_w > 148:
+                            withered_signals += 2
+                            withered_detail.append(f"I={intensity_w:.0f}>148")
+
+                        if circ_w < 0.80:
+                            withered_signals += 1
+                            withered_detail.append(f"Circ={circ_w:.3f}")
+                        if sol_w < 0.985:
+                            withered_signals += 1
+                            withered_detail.append(f"Sol={sol_w:.3f}")
+                        if ar_w >= 0.88:
+                            withered_signals += 1
+                            withered_detail.append(f"AR={ar_w:.2f}(portrait)")
+
+                        if withered_signals >= 3 and current_score > 70:
+                            penalty = 30
                             current_score -= penalty
-                            logs.append(f"⚠️ **Warna (HSV):** Pucat/Withered (Sat: {hsv_sat:.1f}) [-{penalty}]")
+                            logs.append(f"⚠️ **Fisik+Warna:** Withered/Layu ({', '.join(withered_detail)}) [-{penalty}]")
 
                         # 3. DRY CHERRY (Grade 4)
                         intensity = geom_features.get('mean_intensity', 127)
                         if intensity < 95:
                             penalty = 75
                             current_score -= penalty
-                            logs.append(f"❌ **Intensitas:** Dry Cherry/Hitam [-{penalty}]")
-
-                        # 4. WITHERED fisik (G2) & INSECT DAMAGE
-                        solidity = geom_features.get('solidity', 1.0)
-                        if solidity < 0.94 and current_score > 80:
-                            penalty = 20
-                            current_score -= penalty
-                            logs.append(f"⚠️ **Fisik:** Mengerut (Sol: {solidity:.3f}) [-{penalty}]")
+                            logs.append(f"❌ **Intensitas:** Dry Cherry/Hitam (Inten: {intensity:.0f}) [-{penalty}]")
 
                         holes = geom_features.get('holes_count', 0)
                         if holes > 0:
