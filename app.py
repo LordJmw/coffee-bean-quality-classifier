@@ -264,26 +264,44 @@ with col2:
                         st.warning("⚠️ Klaster warna tidak muncul. Pastikan kontur biji terdeteksi di Tab 2.")
 
                 # ─── TAB 3: Penilaian Akhir ────────────────────────────────────────
+                # ─── TAB 3: Penilaian Akhir ────────────────────────────────────────
                 with tabs[3]:
                     if geom_features['is_valid']:
                         current_score = 100
                         logs = []
-
-                        # 1. BROKEN (Grade 4)
-                        aspect_ratio = geom_features.get('aspect_ratio', 1.0)
-                        extent = geom_features.get('extent', 0.8)
-
-                        if aspect_ratio > 1.7 or aspect_ratio < 0.65 or extent < 0.68:
+                        detected_class = None  # <-- TAMBAHAN: track kelas dominan
+                
+                        # ── 1. DRY CHERRY (PRIORITAS TERTINGGI — cek PERTAMA) ──────────────
+                        # Harus dicek SEBELUM Partial Sour, karena warna coklat-hitam
+                        # bisa memiliki R/G > 1.28 sehingga salah terpicu sebagai Sour.
+                        intensity = geom_features.get('mean_intensity', 127)
+                        if intensity < 95:
                             penalty = 75
                             current_score -= penalty
-                            logs.append(f"❌ **Fisik:** Broken/Pecah (AR: {aspect_ratio:.2f}) [-{penalty}]")
-
-                        # 2. PARTIAL SOUR (G3) — deteksi warna kemerahan
-                        if cluster_stats:
+                            detected_class = "DRY_CHERRY"
+                            logs.append(f"❌ **Intensitas:** Dry Cherry/Hitam (Inten: {intensity:.0f}) [-{penalty}]")
+                
+                        # ── 2. BROKEN (Grade 4) ────────────────────────────────────────────
+                        # Broken bisa co-exist dengan kelas lain, tapi hanya tambahkan
+                        # jika bukan sudah Dry Cherry (hindari double Grade-4 penalty)
+                        if detected_class is None:
+                            aspect_ratio = geom_features.get('aspect_ratio', 1.0)
+                            extent = geom_features.get('extent', 0.8)
+                            if aspect_ratio > 1.7 or aspect_ratio < 0.65 or extent < 0.68:
+                                penalty = 75
+                                current_score -= penalty
+                                detected_class = "BROKEN"
+                                logs.append(f"❌ **Fisik:** Broken/Pecah (AR: {aspect_ratio:.2f}) [-{penalty}]")
+                
+                        # ── 3. PARTIAL SOUR (G3) — HANYA jika bukan Dry Cherry / Broken ───
+                        # Dry Cherry memiliki warna coklat kehitaman; secara relatif
+                        # channel R bisa tampak dominan → R/G > 1.28, padahal bukan Sour.
+                        # Guard: skip jika detected_class sudah terisi.
+                        if detected_class is None and cluster_stats:
                             valid_ratios = []
                             for idx, stat in cluster_stats.items():
                                 r, g, b = stat['color']
-                                if r > 185 and g > 185 and b > 185:
+                                if r > 185 and g > 185 and b > 185:  # abaikan klaster glare
                                     continue
                                 valid_ratios.append(r / g if g > 0 else 1.0)
                             if valid_ratios:
@@ -291,91 +309,68 @@ with col2:
                                 if max_rg > 1.28:
                                     penalty = 50
                                     current_score -= penalty
+                                    detected_class = "PARTIAL_SOUR"
                                     logs.append(f"⚠️ **Warna:** Partial Sour (R/G: {max_rg:.2f}) [-{penalty}]")
-
-                        # 2b. WITHERED — multi-sinyal, divalidasi dari 10 Withered + 5 Normal FP
-                        # Fitur pembeda (dari data nyata):
-                        #   G/B ratio: Normal 1.35-1.60 | Withered 1.24-1.42
-                        #   Intensity: Normal 121-136   | Withered 135-163  (overlap tipis 134-136)
-                        #   Circularity: Normal ~0.856  | Withered 0.74-0.87
-                        #   Solidity:    Normal ~0.990  | Withered 0.957-0.987
-                        #   Aspect Ratio: Normal FP 0.68-0.87 | Withered 0.86-1.45
-                        #     → AR >= 0.88 = sinyal tambahan (biji landscape/horizontal bukan Withered)
-                        #
-                        # Threshold yang terbukti 15/15 benar di dataset:
-                        #   Sinyal A (bobot 3): gb<1.40 AND I>140  → Withered klasik
-                        #   Sinyal B (bobot 2): gb<1.38 AND I>132  → Withered borderline
-                        #   Sinyal C (bobot 2): I>148              → Intensity sangat tinggi
-                        #   Sinyal D (bobot 1): circ<0.80          → Bentuk kerut
-                        #   Sinyal E (bobot 1): sol<0.985          → Cekung
-                        #   Sinyal F (bobot 1): ar>=0.88           → Orientasi portrait/tegak
-                        # Keputusan: ws >= 3 → Withered
-
-                        intensity_w = geom_features.get('mean_intensity', 127)
-                        circ_w      = geom_features.get('circularity', 1.0)
-                        sol_w       = geom_features.get('solidity', 1.0)
-                        ar_w        = geom_features.get('aspect_ratio', 1.0)
-
-                        # Hitung G/B ratio dari piksel biji
-                        _mask_w = np.zeros(preprocess_results['rgb'].shape[:2], dtype=np.uint8)
-                        if 'contour' in geom_features:
-                            cv2.drawContours(_mask_w, [geom_features['contour']], -1, 255, -1)
-                        _rgb_w = preprocess_results['rgb']
-                        _g_w = float(np.mean(_rgb_w[:,:,1][_mask_w==255])) if np.any(_mask_w==255) else 130
-                        _b_w = float(np.mean(_rgb_w[:,:,2][_mask_w==255])) if np.any(_mask_w==255) else 90
-                        gb_ratio = _g_w / _b_w if _b_w > 0 else 1.5
-
-                        withered_signals = 0
-                        withered_detail  = []
-
-                        if gb_ratio < 1.40 and intensity_w > 140:
-                            withered_signals += 3
-                            withered_detail.append(f"G/B={gb_ratio:.3f} & I={intensity_w:.0f}")
-                        elif gb_ratio < 1.38 and intensity_w > 132:
-                            withered_signals += 2
-                            withered_detail.append(f"G/B={gb_ratio:.3f} & I={intensity_w:.0f}(borderline)")
-                        elif intensity_w > 148:
-                            withered_signals += 2
-                            withered_detail.append(f"I={intensity_w:.0f}>148")
-
-                        if circ_w < 0.80:
-                            withered_signals += 1
-                            withered_detail.append(f"Circ={circ_w:.3f}")
-                        if sol_w < 0.985:
-                            withered_signals += 1
-                            withered_detail.append(f"Sol={sol_w:.3f}")
-                        if ar_w >= 0.88:
-                            withered_signals += 1
-                            withered_detail.append(f"AR={ar_w:.2f}(portrait)")
-
-                        if withered_signals >= 3 and current_score > 70:
-                            penalty = 30
-                            current_score -= penalty
-                            logs.append(f"⚠️ **Fisik+Warna:** Withered/Layu ({', '.join(withered_detail)}) [-{penalty}]")
-
-                        # 3. DRY CHERRY (Grade 4)
-                        intensity = geom_features.get('mean_intensity', 127)
-                        if intensity < 95:
-                            penalty = 75
-                            current_score -= penalty
-                            logs.append(f"❌ **Intensitas:** Dry Cherry/Hitam (Inten: {intensity:.0f}) [-{penalty}]")
-
+                
+                        # ── 4. WITHERED — hanya jika belum ada kelas dominan lain ──────────
+                        if detected_class is None:
+                            intensity_w = geom_features.get('mean_intensity', 127)
+                            circ_w      = geom_features.get('circularity', 1.0)
+                            sol_w       = geom_features.get('solidity', 1.0)
+                            ar_w        = geom_features.get('aspect_ratio', 1.0)
+                
+                            _mask_w = np.zeros(preprocess_results['rgb'].shape[:2], dtype=np.uint8)
+                            if 'contour' in geom_features:
+                                cv2.drawContours(_mask_w, [geom_features['contour']], -1, 255, -1)
+                            _rgb_w = preprocess_results['rgb']
+                            _g_w = float(np.mean(_rgb_w[:,:,1][_mask_w==255])) if np.any(_mask_w==255) else 130
+                            _b_w = float(np.mean(_rgb_w[:,:,2][_mask_w==255])) if np.any(_mask_w==255) else 90
+                            gb_ratio = _g_w / _b_w if _b_w > 0 else 1.5
+                
+                            withered_signals = 0
+                            withered_detail  = []
+                
+                            if gb_ratio < 1.40 and intensity_w > 140:
+                                withered_signals += 3
+                                withered_detail.append(f"G/B={gb_ratio:.3f} & I={intensity_w:.0f}")
+                            elif gb_ratio < 1.38 and intensity_w > 132:
+                                withered_signals += 2
+                                withered_detail.append(f"G/B={gb_ratio:.3f} & I={intensity_w:.0f}(borderline)")
+                            elif intensity_w > 148:
+                                withered_signals += 2
+                                withered_detail.append(f"I={intensity_w:.0f}>148")
+                
+                            if circ_w < 0.80:
+                                withered_signals += 1
+                                withered_detail.append(f"Circ={circ_w:.3f}")
+                            if sol_w < 0.985:
+                                withered_signals += 1
+                                withered_detail.append(f"Sol={sol_w:.3f}")
+                            if ar_w >= 0.88:
+                                withered_signals += 1
+                                withered_detail.append(f"AR={ar_w:.2f}(portrait)")
+                
+                            if withered_signals >= 3 and current_score > 70:
+                                penalty = 30
+                                current_score -= penalty
+                                detected_class = "WITHERED"
+                                logs.append(f"⚠️ **Fisik+Warna:** Withered/Layu ({', '.join(withered_detail)}) [-{penalty}]")
+                
+                        # ── 5. INSECT HOLES — bisa co-exist dengan kelas apapun ───────────
                         holes = geom_features.get('holes_count', 0)
                         if holes > 0:
                             if holes >= 2:
                                 penalty = 90
                                 logs.append(f"❌ **Hama:** Severe Insect Damage ({holes} lubang) [-{penalty}]")
                             else:
-                                # 1 lubang = sudah Severe Insect Damage (Grade 5)
-                                # sesuai standar SNI: setiap lubang = cacat berat
                                 penalty = 85
                                 logs.append(f"❌ **Hama:** Insect Damage (1 lubang terdeteksi) [-{penalty}]")
                             current_score -= penalty
-
-                        # Finalisasi
+                
+                        # ── Finalisasi ──────────────────────────────────────────────────────
                         final_score = max(0, current_score)
                         st.subheader(f"Total Skor Akhir: {final_score}")
-
+                
                         if final_score >= 88:
                             st.success("### HASIL: GRADE 1 (NORMAL)")
                         elif final_score >= 60:
@@ -386,7 +381,7 @@ with col2:
                             st.error("### HASIL: GRADE 4 (BROKEN / DRY CHERRY)")
                         else:
                             st.error("### HASIL: GRADE 5 (SEVERE INSECT DAMAGE)")
-
+                
                         for log in logs:
                             st.write(log)
 
