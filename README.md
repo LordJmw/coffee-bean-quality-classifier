@@ -42,3 +42,6 @@ venv\Scripts\activate
 
 # 5. Install dependencies
 pip install -r requirements.txt
+
+# 6. Jalankan aplikasi
+streamlit run app.py
