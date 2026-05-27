@@ -12,6 +12,7 @@ from utils.preprocessing import preprocess_pipeline
 from utils.morphology import apply_morphology
 from utils.features import classify_coffee_bean, extract_all_features
 from utils.clustering import analyze_color_kmeans
+from utils.visualization import create_decision_boundary_plot
 
 # Page config
 st.set_page_config(
@@ -463,6 +464,31 @@ with col2:
                                 st.caption(f"   {name:<18}: {bar} {prob*100:.1f}%")
 
                             st.info(f"💡 Model ini dilatih dengan 378 sampel dan mencapai akurasi 92.1% pada data uji.")
+
+                            # VISUALISASI DECISION BOUNDARY
+                            with st.expander("📈 Visualisasi Decision Boundary Random Forest"):
+                                
+                                st.caption(
+                                    "Visualisasi area keputusan model berdasarkan "
+                                    "fitur Green Ratio dan Area."
+                                )
+
+                                fig = create_decision_boundary_plot(
+                                    ml_model,
+                                    ml_scaler,
+                                    user_features=geom_features
+                                )
+
+                                st.pyplot(fig)
+                                
+                                # Menambahkan catatan kaki/edukasi untuk pengguna dashboard
+                                st.info(
+                                    "💡 **Catatan Grafik:**\n"
+                                    "- **Titik-titik di atas adalah Data Testing (20% dari total dataset)** yang digunakan untuk menguji akurasi model pada data baru.\n"
+                                    "- **Bintang Hitam (*)** merepresentasikan posisi karakteristik sampel biji kopi yang Anda masukkan saat ini.\n"
+                                    "- Karena model ini bekerja pada ruang 10-Dimensi dan grafik ini hanya memproyeksikan 2-Dimensi utama, "
+                                    "beberapa titik mungkin terlihat 'salah tempat' secara visual karena dipengaruhi oleh 8 fitur lainnya yang tidak terlihat di sini."
+                                )
                         
                         else:
                             st.subheader(f"Total Skor Akhir: {final_score}")
