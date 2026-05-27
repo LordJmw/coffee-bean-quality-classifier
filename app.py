@@ -12,6 +12,7 @@ from utils.preprocessing import preprocess_pipeline
 from utils.morphology import apply_morphology
 from utils.features import classify_coffee_bean, extract_all_features
 from utils.clustering import analyze_color_kmeans
+from utils.visualization import create_decision_boundary_plot
 
 # Page config
 st.set_page_config(
@@ -323,13 +324,132 @@ with col2:
                 # ─── TAB 3: Penilaian Akhir ────────────────────────────────────────
                 with tabs[3]:
                     if geom_features['is_valid']:
+
+                        # ==========================================
+                        # 1. JALANKAN KEDUA METODE (BACKEND)
+                        # ==========================================
                         
-                        # ========== ML MODE ==========
-                        if classification_mode == "Machine Learning" and ml_model is not None:
+                        # --- A. Prediksi Machine Learning ---
+                        if ml_model is not None:
                             pred_class, confidence, proba, grade = predict_with_ml(geom_features, ml_model, ml_scaler)
+
+                        # --- B. Prediksi Rule-Based ---
+                        current_score = 100
+                        logs = []
+                        detected_class = None
+                        
+                        # ── 1. DRY CHERRY ──────────────────────────────
+                        intensity = geom_features.get('mean_intensity', 127)
+                        if intensity < 95:
+                            penalty = 75
+                            current_score -= penalty
+                            detected_class = "DRY_CHERRY"
+                            logs.append(f"❌ **Intensitas:** Dry Cherry/Hitam (Inten: {intensity:.0f}) [-{penalty}]")
+                        
+                        # ── 2. BROKEN ──────────────────────────────────
+                        if detected_class is None:
+                            aspect_ratio = geom_features.get('aspect_ratio', 1.0)
+                            extent = geom_features.get('extent', 0.8)
+                            if aspect_ratio > 1.7 or aspect_ratio < 0.65 or extent < 0.68:
+                                penalty = 75
+                                current_score -= penalty
+                                detected_class = "BROKEN"
+                                logs.append(f"❌ **Fisik:** Broken/Pecah (AR: {aspect_ratio:.2f}) [-{penalty}]")
+                        
+                        # ── 3. PARTIAL SOUR ────────────────────────────
+                        if detected_class is None and cluster_stats is not None:
+                            valid_ratios = []
+                            for idx, stat in cluster_stats.items():
+                                r, g, b = stat['color']
+                                if r > 185 and g > 185 and b > 185:
+                                    continue
+                                valid_ratios.append(r / g if g > 0 else 1.0)
+                            if valid_ratios:
+                                max_rg = max(valid_ratios)
+                                if max_rg > 1.28:
+                                    penalty = 50
+                                    current_score -= penalty
+                                    detected_class = "PARTIAL_SOUR"
+                                    logs.append(f"⚠️ **Warna:** Partial Sour (R/G: {max_rg:.2f}) [-{penalty}]")
+                        
+                        # ── 4. WITHERED ────────────────────────────────
+                        if detected_class is None:
+                            intensity_w = geom_features.get('mean_intensity', 127)
+                            circ_w = geom_features.get('circularity', 1.0)
+                            sol_w = geom_features.get('solidity', 1.0)
+                            ar_w = geom_features.get('aspect_ratio', 1.0)
                             
+                            _mask_w = np.zeros(preprocess_results['rgb'].shape[:2], dtype=np.uint8)
+                            if 'contour' in geom_features:
+                                cv2.drawContours(_mask_w, [geom_features['contour']], -1, 255, -1)
+                            _rgb_w = preprocess_results['rgb']
+                            _g_w = float(np.mean(_rgb_w[:,:,1][_mask_w==255])) if np.any(_mask_w==255) else 130
+                            _b_w = float(np.mean(_rgb_w[:,:,2][_mask_w==255])) if np.any(_mask_w==255) else 90
+                            gb_ratio = _g_w / _b_w if _b_w > 0 else 1.5
+                            
+                            withered_signals = 0
+                            withered_detail = []
+                            
+                            if gb_ratio < 1.40 and intensity_w > 140:
+                                withered_signals += 3
+                                withered_detail.append(f"G/B={gb_ratio:.3f} & I={intensity_w:.0f}")
+                            elif gb_ratio < 1.38 and intensity_w > 132:
+                                withered_signals += 2
+                                withered_detail.append(f"G/B={gb_ratio:.3f} & I={intensity_w:.0f}(border)")
+                            elif intensity_w > 148:
+                                withered_signals += 2
+                                withered_detail.append(f"I={intensity_w:.0f}>148")
+                            
+                            if circ_w < 0.80:
+                                withered_signals += 1
+                                withered_detail.append(f"Circ={circ_w:.3f}")
+                            if sol_w < 0.985:
+                                withered_signals += 1
+                                withered_detail.append(f"Sol={sol_w:.3f}")
+                            if ar_w >= 0.88:
+                                withered_signals += 1
+                                withered_detail.append(f"AR={ar_w:.2f}(port)")
+                            
+                            if withered_signals >= 3 and current_score > 70:
+                                penalty = 30
+                                current_score -= penalty
+                                detected_class = "WITHERED"
+                                logs.append(f"⚠️ **Fisik+Warna:** Withered ({', '.join(withered_detail)}) [-{penalty}]")
+                        
+                        # ── 5. INSECT HOLES ────────────────────────────
+                        holes = geom_features.get('holes_count', 0)
+                        if holes > 0:
+                            if holes >= 2:
+                                penalty = 90
+                                logs.append(f"❌ **Hama:** Severe Insect Damage ({holes} lubang) [-{penalty}]")
+                            else:
+                                penalty = 85
+                                logs.append(f"❌ **Hama:** Insect Damage (1 lubang terdeteksi) [-{penalty}]")
+                            current_score -= penalty
+                        
+                        # ── Finalisasi ─────────────────────────────────
+                        final_score = max(0, current_score)
+
+                        # Tetapkan Konversi Grade Rule-Based
+                        if final_score >= 88:
+                            rule_grade_text, rule_grade_num = "NORMAL", 1
+                        elif final_score >= 60:
+                            rule_grade_text, rule_grade_num = "WITHERED / DEFECT RINGAN", 2
+                        elif final_score >= 40:
+                            rule_grade_text, rule_grade_num = "PARTIAL SOUR", 3
+                        elif final_score >= 20:
+                            rule_grade_text, rule_grade_num = "BROKEN / DRY CHERRY", 4
+                        else:
+                            rule_grade_text, rule_grade_num = "SEVERE INSECT DAMAGE", 5
+
+                        class_names = ['Normal', 'Withered', 'Partial Sour', 'Broken', 'Dry Cherry', 'Severe Insect Damage']
+
+                        # ==========================================
+                        # 2. TAMPILAN UTAMA (Sesuai Pilihan Sidebar)
+                        # ==========================================
+                        if classification_mode == "Machine Learning" and ml_model is not None:
                             st.subheader(f"###Hasil Klasifikasi ML(Random Forest): **{pred_class}**")
-                            
+
                             col_score, col_grade = st.columns(2)
                             with col_score:
                                 st.metric("Confidence", f"{confidence:.1f}%")
@@ -338,127 +458,86 @@ with col2:
                             
                             # Tampilkan probabilitas per kelas
                             st.caption("📊 Distribusi Probabilitas per Kelas:")
-                            class_names = ['Normal', 'Withered', 'Partial Sour', 'Broken', 'Dry Cherry', 'Severe Insect Damage']
                             for name, prob in zip(class_names, proba):
                                 bar_length = int(prob * 30)
                                 bar = "█" * bar_length + "░" * (30 - bar_length)
                                 st.caption(f"   {name:<18}: {bar} {prob*100:.1f}%")
-                            
+
                             st.info(f"💡 Model ini dilatih dengan 378 sampel dan mencapai akurasi 92.1% pada data uji.")
-                            
-                        # ========== RULE-BASED MODE  ==========
+
+                            # VISUALISASI DECISION BOUNDARY
+                            with st.expander("📈 Visualisasi Decision Boundary Random Forest"):
+                                
+                                st.caption(
+                                    "Visualisasi area keputusan model berdasarkan "
+                                    "fitur Green Ratio dan Area."
+                                )
+
+                                fig = create_decision_boundary_plot(
+                                    ml_model,
+                                    ml_scaler,
+                                    user_features=geom_features
+                                )
+
+                                st.pyplot(fig)
+                                
+                                # Menambahkan catatan kaki/edukasi untuk pengguna dashboard
+                                st.info(
+                                    "💡 **Catatan Grafik:**\n"
+                                    "- **Titik-titik di atas adalah Data Testing (20% dari total dataset)** yang digunakan untuk menguji akurasi model pada data baru.\n"
+                                    "- **Bintang Hitam (*)** merepresentasikan posisi karakteristik sampel biji kopi yang Anda masukkan saat ini.\n"
+                                    "- Karena model ini bekerja pada ruang 10-Dimensi dan grafik ini hanya memproyeksikan 2-Dimensi utama, "
+                                    "beberapa titik mungkin terlihat 'salah tempat' secara visual karena dipengaruhi oleh 8 fitur lainnya yang tidak terlihat di sini."
+                                )
+                        
                         else:
-                            current_score = 100
-                            logs = []
-                            detected_class = None
-                            
-                            # ── 1. DRY CHERRY ──────────────────────────────
-                            intensity = geom_features.get('mean_intensity', 127)
-                            if intensity < 95:
-                                penalty = 75
-                                current_score -= penalty
-                                detected_class = "DRY_CHERRY"
-                                logs.append(f"❌ **Intensitas:** Dry Cherry/Hitam (Inten: {intensity:.0f}) [-{penalty}]")
-                            
-                            # ── 2. BROKEN ──────────────────────────────────
-                            if detected_class is None:
-                                aspect_ratio = geom_features.get('aspect_ratio', 1.0)
-                                extent = geom_features.get('extent', 0.8)
-                                if aspect_ratio > 1.7 or aspect_ratio < 0.65 or extent < 0.68:
-                                    penalty = 75
-                                    current_score -= penalty
-                                    detected_class = "BROKEN"
-                                    logs.append(f"❌ **Fisik:** Broken/Pecah (AR: {aspect_ratio:.2f}) [-{penalty}]")
-                            
-                            # ── 3. PARTIAL SOUR ────────────────────────────
-                            if detected_class is None and cluster_stats is not None:
-                                valid_ratios = []
-                                for idx, stat in cluster_stats.items():
-                                    r, g, b = stat['color']
-                                    if r > 185 and g > 185 and b > 185:
-                                        continue
-                                    valid_ratios.append(r / g if g > 0 else 1.0)
-                                if valid_ratios:
-                                    max_rg = max(valid_ratios)
-                                    if max_rg > 1.28:
-                                        penalty = 50
-                                        current_score -= penalty
-                                        detected_class = "PARTIAL_SOUR"
-                                        logs.append(f"⚠️ **Warna:** Partial Sour (R/G: {max_rg:.2f}) [-{penalty}]")
-                            
-                            # ── 4. WITHERED ────────────────────────────────
-                            if detected_class is None:
-                                intensity_w = geom_features.get('mean_intensity', 127)
-                                circ_w = geom_features.get('circularity', 1.0)
-                                sol_w = geom_features.get('solidity', 1.0)
-                                ar_w = geom_features.get('aspect_ratio', 1.0)
-                                
-                                _mask_w = np.zeros(preprocess_results['rgb'].shape[:2], dtype=np.uint8)
-                                if 'contour' in geom_features:
-                                    cv2.drawContours(_mask_w, [geom_features['contour']], -1, 255, -1)
-                                _rgb_w = preprocess_results['rgb']
-                                _g_w = float(np.mean(_rgb_w[:,:,1][_mask_w==255])) if np.any(_mask_w==255) else 130
-                                _b_w = float(np.mean(_rgb_w[:,:,2][_mask_w==255])) if np.any(_mask_w==255) else 90
-                                gb_ratio = _g_w / _b_w if _b_w > 0 else 1.5
-                                
-                                withered_signals = 0
-                                withered_detail = []
-                                
-                                if gb_ratio < 1.40 and intensity_w > 140:
-                                    withered_signals += 3
-                                    withered_detail.append(f"G/B={gb_ratio:.3f} & I={intensity_w:.0f}")
-                                elif gb_ratio < 1.38 and intensity_w > 132:
-                                    withered_signals += 2
-                                    withered_detail.append(f"G/B={gb_ratio:.3f} & I={intensity_w:.0f}(borderline)")
-                                elif intensity_w > 148:
-                                    withered_signals += 2
-                                    withered_detail.append(f"I={intensity_w:.0f}>148")
-                                
-                                if circ_w < 0.80:
-                                    withered_signals += 1
-                                    withered_detail.append(f"Circ={circ_w:.3f}")
-                                if sol_w < 0.985:
-                                    withered_signals += 1
-                                    withered_detail.append(f"Sol={sol_w:.3f}")
-                                if ar_w >= 0.88:
-                                    withered_signals += 1
-                                    withered_detail.append(f"AR={ar_w:.2f}(portrait)")
-                                
-                                if withered_signals >= 3 and current_score > 70:
-                                    penalty = 30
-                                    current_score -= penalty
-                                    detected_class = "WITHERED"
-                                    logs.append(f"⚠️ **Fisik+Warna:** Withered/Layu ({', '.join(withered_detail)}) [-{penalty}]")
-                            
-                            # ── 5. INSECT HOLES ────────────────────────────
-                            holes = geom_features.get('holes_count', 0)
-                            if holes > 0:
-                                if holes >= 2:
-                                    penalty = 90
-                                    logs.append(f"❌ **Hama:** Severe Insect Damage ({holes} lubang) [-{penalty}]")
-                                else:
-                                    penalty = 85
-                                    logs.append(f"❌ **Hama:** Insect Damage (1 lubang terdeteksi) [-{penalty}]")
-                                current_score -= penalty
-                            
-                            # ── Finalisasi ─────────────────────────────────
-                            final_score = max(0, current_score)
                             st.subheader(f"Total Skor Akhir: {final_score}")
-                            
-                            if final_score >= 88:
-                                st.success("### HASIL: GRADE 1 (NORMAL)")
-                            elif final_score >= 60:
-                                st.info("### HASIL: GRADE 2 (WITHERED / DEFECT RINGAN)")
-                            elif final_score >= 40:
-                                st.warning("### HASIL: GRADE 3 (PARTIAL SOUR)")
-                            elif final_score >= 20:
-                                st.error("### HASIL: GRADE 4 (BROKEN / DRY CHERRY)")
+
+                            text = f"### HASIL: GRADE {rule_grade_num} ({rule_grade_text})"
+                            if rule_grade_num == 1:
+                                st.success(text)
+                            elif rule_grade_num == 2:
+                                st.info(text)
+                            elif rule_grade_num == 3:
+                                st.warning(text)
                             else:
-                                st.error("### HASIL: GRADE 5 (SEVERE INSECT DAMAGE)")
-                            
+                                st.error(text)
+
                             for log in logs:
                                 st.write(log)
-    
+
+
+                        # ==========================================
+                        # 3. EXPANDER KOMPARASI (SIDE-BY-SIDE)
+                        # ==========================================
+                        with st.expander("🔍 Analisis: Bandingkan Rule-Based vs Machine Learning"):
+                            # Layout Side-by-Side
+                            c_rule, c_ml = st.columns(2)
+                            
+                            with c_rule:
+                                st.markdown("#### 📐 Rule-Based")
+                                st.metric("Grade", rule_grade_num)
+                                st.write(f"**Kelas:** {rule_grade_text.title()}")
+                                st.write(f"**Skor:** {final_score}/100")
+                                st.markdown("**Jejak Penalti:**")
+                                if len(logs) == 0:
+                                    st.caption("- Tidak ada penalti")
+                                else:
+                                    for log in logs:
+                                        st.caption(f"- {log}")
+                                        
+                            with c_ml:
+                                st.markdown("#### 🤖 Machine Learning")
+                                st.metric("Grade", grade)
+                                st.write(f"**Kelas:** {pred_class}")
+                                st.write(f"**Confidence:** {confidence:.1f}%")
+                                st.markdown("**Top Probabilitas:**")
+                                # Mengurutkan dan mengambil 3 probabilitas tertinggi agar tidak terlalu penuh
+                                prob_dict = {name: p for name, p in zip(class_names, proba)}
+                                sorted_probs = dict(sorted(prob_dict.items(), key=lambda item: item[1], reverse=True)[:3])
+                                for name, p in sorted_probs.items():
+                                    st.caption(f"- {name}: {p*100:.1f}%")
+
                     else:
                         st.error("⚠️ Objek tidak terdeteksi dengan jelas.")
 
