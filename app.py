@@ -194,7 +194,7 @@ with col2:
                     k=3
                 ) if geom_features['is_valid'] and geom_features['cropped_rgb'] is not None else (None, None, None)
 
-                tabs = st.tabs(["Proses Citra", "Hasil Ekstraksi", "Analisis Warna", "Penilaian Akhir"])
+                tabs = st.tabs(["Proses Citra", "Hasil Ekstraksi", "Analisis Warna", "Penilaian Akhir", "Penilaian Model"])
 
                 # ─── TAB 0: Proses Citra ───────────────────────────────────────────
                 with tabs[0]:
@@ -541,6 +541,138 @@ with col2:
                     else:
                         st.error("⚠️ Objek tidak terdeteksi dengan jelas.")
 
+                # ─── TAB 4: Penilaian Model ────────────────────────────────────────
+                with tabs[4]:
+                    st.subheader("📈 Evaluasi Performa Keseluruhan Model")
+                    st.write("Visualisasi di bawah ini digenerate secara langsung dari hasil pengujian dataset asli Anda.")
+                    
+                    import matplotlib.pyplot as plt
+                    import seaborn as sns
+                    import pandas as pd
+                    import numpy as np
+                    import os
+
+                    class_names = ['Normal', 'Withered', 'Partial Sour', 'Broken', 'Dry Cherry', 'Severe Insect Damage']
+                    
+                    # ==========================================
+                    # 1. CONFUSION MATRIX 6x6 (Murni dari Data Anda)
+                    # ==========================================
+                    st.markdown("#### 🧱 Matriks Kontingensi (Confusion Matrix)")
+                    
+                    cm_data_path = "models/confusion_matrix_data.csv"
+                    
+                    if os.path.exists(cm_data_path):
+                        # Membaca file CSV yang berisi angka asli 6x6 dari train_model.py
+                        cm_df = pd.read_csv(cm_data_path, index_col=0)
+                        
+                        # Menggambar ulang Heatmap 6x6 secara dinamis
+                        fig_cm, ax_cm = plt.subplots(figsize=(7, 6))
+                        sns.heatmap(
+                            cm_df, 
+                            annot=True, 
+                            fmt='d',          # 'd' untuk angka bulat (jumlah sampel)
+                            cmap='Blues',     # Warna biru seperti referensi Anda
+                            ax=ax_cm, 
+                            cbar=True,        # Skala warna
+                            square=True,      # Wajib kotak (NxN)
+                            linewidths=0.5, 
+                            linecolor='gray'
+                        )
+                        
+                        ax_cm.set_title('Confusion Matrix - Random Forest\n', fontsize=14)
+                        ax_cm.set_xlabel('Predicted Label', fontsize=10)
+                        ax_cm.set_ylabel('True Label', fontsize=10)
+                        
+                        # Merapikan rotasi teks
+                        ax_cm.tick_params(axis='x', rotation=45)
+                        ax_cm.tick_params(axis='y', rotation=0)
+                        
+                        st.pyplot(fig_cm)
+                    else:
+                        st.error("⚠️ File `confusion_matrix_data.csv` belum ada. Silakan tambahkan kode export CSV di `train_model.py` dan jalankan ulang.")
+
+                    # st.divider()
+
+                    # ==========================================
+                    # 2. GAMBAR HEATMAP 6x6 (DINAMIS & INTERAKTIF)
+                    # ==========================================
+                        st.markdown("#### 🧱 Confusion Matrix (Real-time Highlight)")
+                        st.caption("Kotak yang diberi bingkai merah tebal menunjukkan posisi biji kopi yang Anda tes saat ini di dalam matriks keseluruhan.")
+                        
+                        # 1. Ambil nama kelas asli dari sidebar (Sesuaikan nama variabel ini dengan kodemu!)
+                        # Misalnya variabel dropdown di sidebar kamu namanya 'selected_class'
+                        aktual_class = selected_class if 'selected_class' in locals() else pred_class
+                        
+                        # 2. Cari indeks baris (aktual) dan kolom (prediksi) untuk kotak yang mau di-highlight
+                        try:
+                            idx_aktual = class_names.index(aktual_class)
+                            idx_pred = class_names.index(pred_class)
+                        except ValueError:
+                            idx_aktual, idx_pred = 0, 0
+
+                        # 3. (Opsional) Tambahkan nilai +1 ke kotak tebakan saat ini agar angkanya benar-benar berubah dinamis
+                        cm_dinamis = cm.copy()
+                        cm_dinamis[idx_aktual, idx_pred] += 1
+
+                        # 4. Gambar Heatmap
+                        fig_cm = go.Figure(data=go.Heatmap(
+                            z=cm_dinamis,
+                            x=class_names,
+                            y=class_names,
+                            colorscale='Blues',
+                            text=cm_dinamis,
+                            texttemplate="%{text}",
+                            textfont={"size": 18, "family": "Arial", "color": "white", "weight": "bold"},
+                            hovertemplate="Aktual: %{y}<br>Prediksi: %{x}<br>Jumlah: %{z}<extra></extra>",
+                            showscale=True
+                        ))
+
+                        # 5. BERIKAN EFEK MENYALA / HIGHLIGHT PADA KOTAK YANG SEDANG AKTIF
+                        fig_cm.add_shape(
+                            type="rect",
+                            x0=idx_pred - 0.5, y0=idx_aktual - 0.5,
+                            x1=idx_pred + 0.5, y1=idx_aktual + 0.5,
+                            line=dict(color="red", width=5), # Bingkai merah tebal menyala
+                            fillcolor="rgba(255, 0, 0, 0.2)" # Latar agak kemerahan
+                        )
+
+                        fig_cm.update_layout(
+                            xaxis=dict(title="Kelas Prediksi", tickmode="array", tickvals=class_names, color="white"),
+                            yaxis=dict(title="Kelas Aktual", tickmode="array", tickvals=class_names, autorange='reversed', color="white", scaleanchor="x", scaleratio=1),
+                            paper_bgcolor="#1e1e1e",
+                            plot_bgcolor="#1e1e1e",
+                            width=700, 
+                            height=700,
+                            margin=dict(l=20, r=20, t=40, b=20)
+                        )
+                        st.plotly_chart(fig_cm, use_container_width=True)
+
+                    # ==========================================
+                    # 2. FEATURE IMPORTANCE DINAMIS
+                    # ==========================================
+                    st.markdown("#### 📊 Parameter Ekstraksi Paling Berpengaruh (Feature Importance)")
+                    
+                    if ml_model is not None:
+                        try:
+                            # Menarik nilai bobot asli dari model .pkl Anda
+                            importances = ml_model.feature_importances_
+                            features_list = ['area', 'circularity', 'solidity', 'extent', 'aspect_ratio', 'holes_count', 'center_cut_lines', 'mean_intensity', 'red_ratio', 'green_ratio']
+                            
+                            df_fi = pd.DataFrame({
+                                'Fitur': features_list,
+                                'Kepentingan': importances
+                            }).sort_values(by='Kepentingan', ascending=True)
+
+                            fig_fi, ax_fi = plt.subplots(figsize=(8, 5))
+                            sns.barplot(x='Kepentingan', y='Fitur', data=df_fi, palette='tab10', ax=ax_fi)
+                            ax_fi.set_title('Pengaruh Parameter Terhadap Prediksi Model')
+                            ax_fi.set_xlabel('Nilai Importance')
+                            ax_fi.set_ylabel('')
+                            
+                            st.pyplot(fig_fi)
+                        except Exception as e:
+                            st.error(f"Gagal memuat Feature Importance: {e}")
+                        
             except Exception as e:
                 st.error(f"Terjadi kesalahan teknis: {e}")
 
