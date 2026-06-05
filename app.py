@@ -194,7 +194,10 @@ with col2:
                     k=3
                 ) if geom_features['is_valid'] and geom_features['cropped_rgb'] is not None else (None, None, None)
 
-                tabs = st.tabs(["Proses Citra", "Hasil Ekstraksi", "Analisis Warna", "Penilaian Akhir", "Penilaian Model"])
+                if classification_mode == "Machine Learning":
+                    tabs = st.tabs(["Proses Citra", "Hasil Ekstraksi", "Analisis Warna", "Penilaian Akhir", "Penilaian Model"])
+                else:
+                    tabs = st.tabs(["Proses Citra", "Hasil Ekstraksi", "Analisis Warna", "Penilaian Akhir"])
 
                 # ─── TAB 0: Proses Citra ───────────────────────────────────────────
                 with tabs[0]:
@@ -541,137 +544,139 @@ with col2:
                     else:
                         st.error("⚠️ Objek tidak terdeteksi dengan jelas.")
 
-                # ─── TAB 4: Penilaian Model ────────────────────────────────────────
-                with tabs[4]:
-                    st.subheader("📈 Evaluasi Performa Keseluruhan Model")
-                    st.write("Visualisasi di bawah ini digenerate secara langsung dari hasil pengujian dataset asli Anda.")
-                    
-                    import matplotlib.pyplot as plt
-                    import seaborn as sns
-                    import pandas as pd
-                    import numpy as np
-                    import os
-
-                    class_names = ['Normal', 'Withered', 'Partial Sour', 'Broken', 'Dry Cherry', 'Severe Insect Damage']
-                    
-                    # ==========================================
-                    # 1. CONFUSION MATRIX 6x6 (Murni dari Data Anda)
-                    # ==========================================
-                    st.markdown("#### 🧱 Matriks Kontingensi (Confusion Matrix)")
-                    
-                    cm_data_path = "models/confusion_matrix_data.csv"
-                    
-                    if os.path.exists(cm_data_path):
-                        # Membaca file CSV yang berisi angka asli 6x6 dari train_model.py
-                        cm_df = pd.read_csv(cm_data_path, index_col=0)
+                if classification_mode == "Machine Learning":
+                    with tabs[4]:
+                        # st.subheader("📈 Analisis Model Dinamis")
+                        # st.write("Visualisasi evaluasi model menggunakan 30 sampel dataset per kelas.")
                         
-                        # Menggambar ulang Heatmap 6x6 secara dinamis
-                        fig_cm, ax_cm = plt.subplots(figsize=(7, 6))
-                        sns.heatmap(
-                            cm_df, 
-                            annot=True, 
-                            fmt='d',          # 'd' untuk angka bulat (jumlah sampel)
-                            cmap='Blues',     # Warna biru seperti referensi Anda
-                            ax=ax_cm, 
-                            cbar=True,        # Skala warna
-                            square=True,      # Wajib kotak (NxN)
-                            linewidths=0.5, 
-                            linecolor='gray'
-                        )
+                        import pandas as pd
+                        import numpy as np
+                        import matplotlib.pyplot as plt
+                        import seaborn as sns
+                        import plotly.express as px
+                        from sklearn.metrics import confusion_matrix
+                        import os
+
+                        class_names = ['Normal', 'Withered', 'Partial Sour', 'Broken', 'Dry Cherry', 'Severe Insect Damage']
+                        features_list = ['area', 'circularity', 'solidity', 'extent', 'aspect_ratio', 'holes_count', 'center_cut_lines', 'mean_intensity', 'red_ratio', 'green_ratio']
+                        dataset_path = "data/features_dataset.csv"
+
+                        # ─── TAB 4: Penilaian Model ────────────────────────────────────────
+                if classification_mode == "Machine Learning":
+                    with tabs[4]:
+                        st.subheader("📈 Analisis Model Dinamis")
+                        st.write("Visualisasi evaluasi model menggunakan 30 sampel dataset per kelas.")
                         
-                        ax_cm.set_title('Confusion Matrix - Random Forest\n', fontsize=14)
-                        ax_cm.set_xlabel('Predicted Label', fontsize=10)
-                        ax_cm.set_ylabel('True Label', fontsize=10)
-                        
-                        # Merapikan rotasi teks
-                        ax_cm.tick_params(axis='x', rotation=45)
-                        ax_cm.tick_params(axis='y', rotation=0)
-                        
-                        st.pyplot(fig_cm)
-                    else:
-                        st.error("⚠️ File `confusion_matrix_data.csv` belum ada. Silakan tambahkan kode export CSV di `train_model.py` dan jalankan ulang.")
+                        import pandas as pd
+                        import numpy as np
+                        import matplotlib.pyplot as plt
+                        import seaborn as sns
+                        from sklearn.metrics import confusion_matrix
+                        import os
 
-                    # st.divider()
+                        class_names = ['Normal', 'Withered', 'Partial Sour', 'Broken', 'Dry Cherry', 'Severe Insect Damage']
+                        features_list = ['area', 'circularity', 'solidity', 'extent', 'aspect_ratio', 'holes_count', 'center_cut_lines', 'mean_intensity', 'red_ratio', 'green_ratio']
+                        dataset_path = "data/features_dataset.csv"
 
-                    # ==========================================
-                    # 2. GAMBAR HEATMAP 6x6 (DINAMIS & INTERAKTIF)
-                    # ==========================================
-                        st.markdown("#### 🧱 Confusion Matrix (Real-time Highlight)")
-                        st.caption("Kotak yang diberi bingkai merah tebal menunjukkan posisi biji kopi yang Anda tes saat ini di dalam matriks keseluruhan.")
-                        
-                        # 1. Ambil nama kelas asli dari sidebar (Sesuaikan nama variabel ini dengan kodemu!)
-                        # Misalnya variabel dropdown di sidebar kamu namanya 'selected_class'
-                        aktual_class = selected_class if 'selected_class' in locals() else pred_class
-                        
-                        # 2. Cari indeks baris (aktual) dan kolom (prediksi) untuk kotak yang mau di-highlight
-                        try:
-                            idx_aktual = class_names.index(aktual_class)
-                            idx_pred = class_names.index(pred_class)
-                        except ValueError:
-                            idx_aktual, idx_pred = 0, 0
-
-                        # 3. (Opsional) Tambahkan nilai +1 ke kotak tebakan saat ini agar angkanya benar-benar berubah dinamis
-                        cm_dinamis = cm.copy()
-                        cm_dinamis[idx_aktual, idx_pred] += 1
-
-                        # 4. Gambar Heatmap
-                        fig_cm = go.Figure(data=go.Heatmap(
-                            z=cm_dinamis,
-                            x=class_names,
-                            y=class_names,
-                            colorscale='Blues',
-                            text=cm_dinamis,
-                            texttemplate="%{text}",
-                            textfont={"size": 18, "family": "Arial", "color": "white", "weight": "bold"},
-                            hovertemplate="Aktual: %{y}<br>Prediksi: %{x}<br>Jumlah: %{z}<extra></extra>",
-                            showscale=True
-                        ))
-
-                        # 5. BERIKAN EFEK MENYALA / HIGHLIGHT PADA KOTAK YANG SEDANG AKTIF
-                        fig_cm.add_shape(
-                            type="rect",
-                            x0=idx_pred - 0.5, y0=idx_aktual - 0.5,
-                            x1=idx_pred + 0.5, y1=idx_aktual + 0.5,
-                            line=dict(color="red", width=5), # Bingkai merah tebal menyala
-                            fillcolor="rgba(255, 0, 0, 0.2)" # Latar agak kemerahan
-                        )
-
-                        fig_cm.update_layout(
-                            xaxis=dict(title="Kelas Prediksi", tickmode="array", tickvals=class_names, color="white"),
-                            yaxis=dict(title="Kelas Aktual", tickmode="array", tickvals=class_names, autorange='reversed', color="white", scaleanchor="x", scaleratio=1),
-                            paper_bgcolor="#1e1e1e",
-                            plot_bgcolor="#1e1e1e",
-                            width=700, 
-                            height=700,
-                            margin=dict(l=20, r=20, t=40, b=20)
-                        )
-                        st.plotly_chart(fig_cm, use_container_width=True)
-
-                    # ==========================================
-                    # 2. FEATURE IMPORTANCE DINAMIS
-                    # ==========================================
-                    st.markdown("#### 📊 Parameter Ekstraksi Paling Berpengaruh (Feature Importance)")
-                    
-                    if ml_model is not None:
-                        try:
-                            # Menarik nilai bobot asli dari model .pkl Anda
-                            importances = ml_model.feature_importances_
-                            features_list = ['area', 'circularity', 'solidity', 'extent', 'aspect_ratio', 'holes_count', 'center_cut_lines', 'mean_intensity', 'red_ratio', 'green_ratio']
+                        # Pastikan model, scaler, dan data asli tersedia
+                        if ml_model is not None and ml_scaler is not None and os.path.exists(dataset_path):
                             
-                            df_fi = pd.DataFrame({
-                                'Fitur': features_list,
-                                'Kepentingan': importances
-                            }).sort_values(by='Kepentingan', ascending=True)
-
-                            fig_fi, ax_fi = plt.subplots(figsize=(8, 5))
-                            sns.barplot(x='Kepentingan', y='Fitur', data=df_fi, palette='tab10', ax=ax_fi)
-                            ax_fi.set_title('Pengaruh Parameter Terhadap Prediksi Model')
-                            ax_fi.set_xlabel('Nilai Importance')
-                            ax_fi.set_ylabel('')
+                            # ==========================================
+                            # 1. TARIK TEPAT 30 DATA PER KELAS DARI CSV ANDA
+                            # ==========================================
+                            df_dataset = pd.read_csv(dataset_path)
                             
-                            st.pyplot(fig_fi)
-                        except Exception as e:
-                            st.error(f"Gagal memuat Feature Importance: {e}")
+                            # Mengambil maksimal 30 baris untuk setiap kelas (class_num)
+                            df_30_per_class = df_dataset.groupby('class_num').head(30)
+                            
+                            X_eval = df_30_per_class[features_list].values
+                            y_eval = df_30_per_class['class_num'].values
+                            
+                            # Model memprediksi 180 data tersebut
+                            X_eval_scaled = ml_scaler.transform(X_eval)
+                            y_pred_eval = ml_model.predict(X_eval_scaled)
+                            
+                            # Generate Matriks NxN (6x6) dari hasil 30 data/kelas
+                            cm = confusion_matrix(y_eval, y_pred_eval)
+
+                            # ==========================================
+                            # 2. GAMBAR HEATMAP 6x6 (Style Klasik Terang & Bergaris)
+                            # ==========================================
+                            st.markdown("#### 🧱 Confusion Matrix (30 Dataset/Kelas)")
+                            
+                            fig_cm, ax_cm = plt.subplots(figsize=(8, 6))
+                            sns.heatmap(
+                                cm, 
+                                annot=True, 
+                                fmt='d', 
+                                cmap='Blues', 
+                                ax=ax_cm, 
+                                cbar=True,
+                                square=True,
+                                linewidths=1,
+                                linecolor='gray',
+                                xticklabels=class_names,
+                                yticklabels=class_names
+                            )
+                            
+                            ax_cm.set_title('Confusion Matrix - Random Forest\n', fontsize=14)
+                            ax_cm.set_xlabel('Predicted Label', fontsize=10)
+                            ax_cm.set_ylabel('True Label', fontsize=10)
+                            
+                            ax_cm.tick_params(axis='x', rotation=45)
+                            ax_cm.tick_params(axis='y', rotation=0)
+                            
+                            st.pyplot(fig_cm)
+
+                            st.divider()
+
+                            # ==========================================
+                            # 3. FEATURE PROFILE (Style Matplotlib Klasik)
+                            # ==========================================
+                            st.markdown("#### 📊 Profil Fitur Biji Kopi Saat Ini")
+                            
+                            if 'geom_features' in locals():
+                                # Menarik ke-10 fitur sesuai urutan dataset yang diminta
+                                current_features = {
+                                    'area': geom_features.get('area', 0),
+                                    'circularity': geom_features.get('circularity', 0),
+                                    'solidity': geom_features.get('solidity', 0),
+                                    'extent': geom_features.get('extent', 0),
+                                    'aspect_ratio': geom_features.get('aspect_ratio', 0),
+                                    'holes_count': geom_features.get('holes_count', 0),
+                                    'center_cut_lines': geom_features.get('center_cut_lines', 0),
+                                    'mean_intensity': geom_features.get('mean_intensity', 0),
+                                    'red_ratio': geom_features.get('red_ratio', 0),
+                                    'green_ratio': geom_features.get('green_ratio', 0)
+                                }
+                                
+                                df_feat = pd.DataFrame({
+                                    'Fitur': list(current_features.keys()), 
+                                    'Nilai': list(current_features.values())
+                                }).sort_values(by='Nilai', ascending=True)
+                                
+                                # Membuat grafik bar horizontal menggunakan Matplotlib
+                                fig_fi, ax_fi = plt.subplots(figsize=(10, 6))
+                                
+                                # Warna biru default Matplotlib (#1f77b4) persis seperti contoh gambar
+                                ax_fi.barh(df_feat['Fitur'], df_feat['Nilai'], color='#1f77b4', align='center')
+                                
+                                ax_fi.set_xlabel('Nilai Kuantitatif (Skala Logaritmik)')
+                                ax_fi.set_title('Profil Fitur Biji Kopi Saat Ini')
+                                
+                                # Mengatur batas/bingkai grafik agar berwarna hitam solid
+                                for spine in ax_fi.spines.values():
+                                    spine.set_color('black')
+                                    spine.set_linewidth(1)
+                                
+                                # Menggunakan skala logaritma agar fitur dengan nilai besar tidak menutupi yang kecil
+                                ax_fi.set_xscale('log')
+                                
+                                plt.tight_layout()
+                                st.pyplot(fig_fi)
+                                
+                        else:
+                            st.error("⚠️ Data `features_dataset.csv` atau Model `.pkl` tidak ditemukan untuk melakukan perhitungan.")
                         
             except Exception as e:
                 st.error(f"Terjadi kesalahan teknis: {e}")
