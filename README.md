@@ -18,8 +18,8 @@ Aplikasi berbasis **Streamlit** yang mampu menganalisis citra biji kopi mentah (
 | 2 | **Withered** | Biji layu / keriput |
 | 3 | **Partial Sour** | Asam sebagian |
 | 4 | **Broken** | Biji pecah |
-| 4 | **Dry Cherry** | Masih terbungkus kulit kering |
-| 5 | **Severe Insect Damage** | Kerusakan parah akibat hama serangga |
+| 5 | **Dry Cherry** | Masih terbungkus kulit kering |
+| 6 | **Severe Insect Damage** | Kerusakan parah akibat hama serangga |
 
 ---
 
